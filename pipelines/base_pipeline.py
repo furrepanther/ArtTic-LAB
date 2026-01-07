@@ -1,6 +1,10 @@
 # pipelines/base_pipeline.py
 import torch
-import intel_extension_for_pytorch as ipex
+try:
+    import intel_extension_for_pytorch as ipex
+except ImportError:
+    ipex = None
+
 import logging
 
 logger = logging.getLogger("arttic_lab")
@@ -8,8 +12,13 @@ logger = logging.getLogger("arttic_lab")
 
 class ArtTicPipeline:
     def __init__(self, model_path, dtype=torch.bfloat16):
-        if not torch.xpu.is_available():
-            raise RuntimeError("Intel ARC GPU (XPU) not detected.")
+        if hasattr(torch, "xpu") and torch.xpu.is_available():
+            self.device = "xpu"
+        elif torch.cuda.is_available():
+            self.device = "cuda"
+        else:
+            self.device = "cpu"
+
         self.pipe = None
         self.model_path = model_path
         self.dtype = dtype
@@ -23,16 +32,19 @@ class ArtTicPipeline:
         if not self.pipe:
             raise RuntimeError("Pipeline must be loaded before placing on device.")
 
-        if use_cpu_offload:
+        if use_cpu_offload and self.device != "cpu":
             logger.info("Enabling Model CPU Offload for low VRAM usage.")
             self.pipe.enable_model_cpu_offload()
             self.is_offloaded = True
         else:
-            logger.info("Moving model to XPU (ARC GPU) for maximum performance.")
-            self.pipe.to("xpu")
+            logger.info(f"Moving model to {self.device} for maximum performance.")
+            self.pipe.to(self.device)
             self.is_offloaded = False
 
     def optimize_with_ipex(self, progress):
+        if not ipex or self.device == "cuda":
+            return
+
         if self.is_optimized:
             logger.info("Model is already optimized.")
             return
@@ -97,5 +109,12 @@ class ArtTicPipeline:
     def generate(self, *args, **kwargs):
         if not self.pipe:
             raise RuntimeError("Pipeline not loaded.")
-        with torch.xpu.amp.autocast(enabled=True, dtype=self.dtype):
+
+        if self.device == "xpu":
+            with torch.xpu.amp.autocast(enabled=True, dtype=self.dtype):
+                return self.pipe(*args, **kwargs)
+        elif self.device == "cuda":
+            with torch.amp.autocast("cuda", enabled=True, dtype=self.dtype):
+                return self.pipe(*args, **kwargs)
+        else:
             return self.pipe(*args, **kwargs)
