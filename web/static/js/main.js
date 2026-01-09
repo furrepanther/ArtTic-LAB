@@ -38,6 +38,8 @@ document.addEventListener("DOMContentLoaded", () => {
       height: 512,
       vae_tiling: true,
       cpu_offload: false,
+      init_image: null,
+      strength: 0.75,
     },
   };
 
@@ -599,6 +601,7 @@ document.addEventListener("DOMContentLoaded", () => {
         content = `<div class="node-content">
           <div class="control-group"><label>Steps</label><div class="slider-input-group"><input type="range" class="range-input" data-key="steps" min="1" max="100" value="${state.generationState.steps}" step="1"><input type="number" data-value-for="steps" value="${state.generationState.steps}"></div></div>
           <div class="control-group"><label>Guidance (CFG)</label><div class="slider-input-group"><input type="range" class="range-input" data-key="guidance" min="1" max="20" value="${state.generationState.guidance}" step="0.5"><input type="number" data-value-for="guidance" value="${state.generationState.guidance}" step="0.5"></div></div>
+          <div class="control-group"><label>Img2Img Strength</label><div class="slider-input-group"><input type="range" class="range-input" data-key="strength" min="0.05" max="1.0" value="${state.generationState.strength}" step="0.05"><input type="number" data-value-for="strength" value="${state.generationState.strength}" step="0.05"></div></div>
           <div class="control-group"><label>Width</label><div class="slider-input-group"><input type="range" class="range-input" data-key="width" min="256" max="4096" value="${state.generationState.width}" step="64"><input type="number" data-value-for="width" value="${state.generationState.width}"></div></div>
           <div class="control-group"><label>Height</label><div class="slider-input-group"><input type="range" class="range-input" data-key="height" min="256" max="4096" value="${state.generationState.height}" step="64"><input type="number" data-value-for="height" value="${state.generationState.height}"></div></div>
           <div class="control-group"><div class="aspect-ratio-buttons"><button class="aspect-ratio-btn active" data-ratio="1:1" title="Square"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg></button><button class="aspect-ratio-btn" data-ratio="4:3" title="Landscape"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"></rect></svg></button><button class="aspect-ratio-btn" data-ratio="3:4" title="Portrait"><svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2"></rect></svg></button></div></div>
@@ -609,6 +612,25 @@ document.addEventListener("DOMContentLoaded", () => {
       case "image_preview":
         header = `<h3 class="node-title">Image Preview</h3>`;
         content = `<div class="node-content"><div class="image-preview-node"><div class="placeholder"><span class="material-symbols-outlined">wallpaper</span></div><img class="preview-img hidden" /></div><div id="image-info-text" class="max-res-info"></div><div class="image-preview-actions"><button id="view-image-btn" class="icon-btn" title="View Image" disabled><span class="material-symbols-outlined">visibility</span></button></div></div>`;
+        break;
+      case "input_image":
+        header = `<h3 class="node-title">Input Image</h3>`;
+        content = `
+        <div class="node-content">
+            <div class="input-image-warning" style="color: var(--warning-color, #f59e0b); font-size: 0.85em; margin-bottom: 8px; padding: 4px; border: 1px solid var(--warning-color, #f59e0b); border-radius: 4px; background: rgba(245, 158, 11, 0.1);">
+                <span class="material-symbols-outlined" style="font-size: 1.2em; vertical-align: bottom;">warning</span>
+                Unstable: Not tested due to lack of VRAM.
+            </div>
+            <div class="input-image-dropzone" id="input-image-dropzone">
+                <span class="material-symbols-outlined">add_photo_alternate</span>
+                <p>Drag & Drop or Click</p>
+                <input type="file" id="input-image-file" accept="image/*" hidden>
+            </div>
+            <div class="input-image-preview hidden">
+                <img id="input-image-img" src="" alt="Input">
+                <button class="remove-image-btn"><span class="material-symbols-outlined">close</span></button>
+            </div>
+        </div>`;
         break;
       case "prompt":
         header = `<h3 class="node-title">Prompt</h3>`;
