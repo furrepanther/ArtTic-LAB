@@ -109,25 +109,7 @@ if /I "%TORCH_PLATFORM%"=="xpu" (
     pip install intel-extension-for-pytorch --extra-index-url https://pytorch-extension.intel.com/release-whl/stable/cpu/us/
 )
 
-rem 5. Install Web UI dependencies
-echo.
-echo [INFO] Installing Web UI dependencies...
-where npm >nul 2>nul
-if %errorlevel% neq 0 (
-    echo [WARNING] npm (Node.js) is not installed or not in your PATH.
-    echo Skipping automatic installation of UI icon packages.
-    echo The UI will still work but will fetch icons from the web.
-) else (
-    if exist "web" (
-        pushd web
-        call npm install
-        popd
-    ) else (
-        echo [WARNING] 'web' directory not found. Skipping npm install.
-    )
-)
-
-rem 6. Handle Hugging Face Login
+rem 5. Handle Hugging Face Login
 echo.
 echo -------------------------------------------------------
 echo [ACTION REQUIRED] Hugging Face Login

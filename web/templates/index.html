@@ -1,202 +1,257 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>ArtTic-LAB</title>
+    <link rel="icon" href="/static/asset/logo.png" type="image/svg+xml" />
+    <link href="/icons/outlined.css" rel="stylesheet" />
+    <link href="/static/css/style.css" rel="stylesheet" />
+  </head>
 
-<head>
-     <meta charset="utf-8" />
-     <meta content="width=device-width, initial-scale=1.0" name="viewport" />
-     <title>ArtTic-LAB</title>
-     <link rel="icon" href="/static/asset/logo.png" type="image/svg+xml">
-     <link href="/icons/outlined.css" rel="stylesheet" />
-     <link href="/static/css/style.css" rel="stylesheet" />
-</head>
+  <body>
+    <header class="top-bar">
+      <div class="logo-brand">
+        <img
+          src="/static/asset/logo.png"
+          alt="ArtTic-LAB Logo"
+          class="app-logo-icon"
+        />
+        <h1 class="app-title">ArtTic-LAB</h1>
+      </div>
+      <nav class="nav-links">
+        <a class="nav-link active" href="#" data-target="generate"
+          ><span class="material-symbols-outlined">auto_awesome</span>
+          Generate</a
+        >
+        <a class="nav-link" href="#" data-target="gallery"
+          ><span class="material-symbols-outlined">photo_library</span>
+          Gallery</a
+        >
+        <a class="nav-link" href="#" data-target="prompt-book"
+          ><span class="material-symbols-outlined">book</span> Prompt Book</a
+        >
+        <a class="nav-link" href="#" data-target="settings"
+          ><span class="material-symbols-outlined">settings</span> Settings</a
+        >
+      </nav>
+      <div class="floating-group top-right">
+        <button id="reset-zoom-btn" class="icon-btn" title="Reset View">
+          <span class="material-symbols-outlined">center_focus_strong</span>
+        </button>
+        <a
+          id="restart-backend-btn"
+          href="#"
+          class="icon-btn"
+          title="Restart Backend"
+          ><span class="material-symbols-outlined">refresh</span></a
+        >
+        <a
+          id="clear-cache-btn"
+          href="#"
+          class="icon-btn"
+          title="Clear VRAM Cache"
+          ><span class="material-symbols-outlined">delete_sweep</span></a
+        >
+        <button id="theme-toggle-btn" class="icon-btn" title="Toggle Theme">
+          <span class="material-symbols-outlined">dark_mode</span>
+        </button>
+        <div id="status-indicator" class="status-indicator connecting">
+          <span id="connection-status">Connecting...</span>
+        </div>
+      </div>
+    </header>
 
-<body>
-     <header class="top-bar">
-          <div class="logo-brand">
-               <img src="/static/asset/logo.png" alt="ArtTic-LAB Logo" class="app-logo-icon" />
-               <h1 class="app-title">ArtTic-LAB</h1>
+    <div id="notification-container"></div>
+
+    <main class="main-content">
+      <div id="page-generate" class="page-content">
+        <svg id="node-connector-svg" class="node-connector-svg"></svg>
+        <div id="node-canvas" class="node-canvas"></div>
+      </div>
+
+      <div id="page-gallery" class="page-content hidden">
+        <div class="page-header">
+          <h1 class="page-title">Your Generations</h1>
+          <button id="refresh-gallery-btn" class="btn btn-secondary">
+            <span class="material-symbols-outlined">refresh</span> Refresh
+          </button>
+        </div>
+        <div id="gallery-grid" class="gallery-grid"></div>
+        <div id="gallery-placeholder" class="gallery-placeholder hidden">
+          <span class="material-symbols-outlined">image_search</span>
+          <p>No images found. Go generate something amazing!</p>
+        </div>
+      </div>
+
+      <div id="page-prompt-book" class="page-content hidden">
+        <div class="page-header">
+          <h1 class="page-title">Prompt Book</h1>
+          <div>
+            <button id="add-prompt-btn" class="btn btn-primary">
+              <span class="material-symbols-outlined">add</span> New Prompt
+            </button>
+            <button id="refresh-prompts-btn" class="btn btn-secondary">
+              <span class="material-symbols-outlined">refresh</span>
+            </button>
           </div>
-          <nav class="nav-links">
-               <a class="nav-link active" href="#" data-target="generate"><span
-                         class="material-symbols-outlined">auto_awesome</span> Generate</a>
-               <a class="nav-link" href="#" data-target="gallery"><span
-                         class="material-symbols-outlined">photo_library</span> Gallery</a>
-               <a class="nav-link" href="#" data-target="prompt-book"><span
-                         class="material-symbols-outlined">book</span>
-                    Prompt Book</a>
-               <a class="nav-link" href="#" data-target="settings"><span
-                         class="material-symbols-outlined">settings</span> Settings</a>
-          </nav>
-          <div class="floating-group top-right">
-               <button id="reset-zoom-btn" class="icon-btn" title="Reset View"><span
-                         class="material-symbols-outlined">center_focus_strong</span></button>
-               <a id="restart-backend-btn" href="#" class="icon-btn" title="Restart Backend"><span
-                         class="material-symbols-outlined">refresh</span></a>
-               <a id="clear-cache-btn" href="#" class="icon-btn" title="Clear VRAM Cache"><span
-                         class="material-symbols-outlined">delete_sweep</span></a>
-               <button id="theme-toggle-btn" class="icon-btn" title="Toggle Theme">
-                    <span class="material-symbols-outlined">dark_mode</span>
-               </button>
-               <div id="status-indicator" class="status-indicator connecting"><span
-                         id="connection-status">Connecting...</span></div>
+        </div>
+        <div id="prompt-book-grid" class="prompt-book-grid"></div>
+        <div id="prompt-book-placeholder" class="gallery-placeholder hidden">
+          <span class="material-symbols-outlined">stylebook</span>
+          <p>Your saved prompts will appear here.</p>
+        </div>
+      </div>
+
+      <div id="page-settings" class="page-content hidden">
+        <div class="page-header">
+          <h1 class="page-title">File Management</h1>
+        </div>
+        <div class="settings-container">
+          <div class="settings-column">
+            <div class="settings-header">
+              <h2>Models</h2>
+              <button id="refresh-models-btn" class="icon-btn">
+                <span class="material-symbols-outlined">refresh</span>
+              </button>
+            </div>
+            <div id="models-list" class="file-list"></div>
           </div>
-     </header>
-
-     <div id="notification-container"></div>
-
-     <main class="main-content">
-          <div id="page-generate" class="page-content">
-               <svg id="node-connector-svg" class="node-connector-svg"></svg>
-               <div id="node-canvas" class="node-canvas"></div>
+          <div class="settings-column">
+            <div class="settings-header">
+              <h2>LoRAs</h2>
+              <button id="refresh-loras-btn" class="icon-btn">
+                <span class="material-symbols-outlined">refresh</span>
+              </button>
+            </div>
+            <div id="loras-list" class="file-list"></div>
           </div>
+        </div>
+      </div>
+    </main>
 
-          <div id="page-gallery" class="page-content hidden">
-               <div class="page-header">
-                    <h1 class="page-title">Your Generations</h1>
-                    <button id="refresh-gallery-btn" class="btn btn-secondary"><span
-                              class="material-symbols-outlined">refresh</span> Refresh</button>
-               </div>
-               <div id="gallery-grid" class="gallery-grid"></div>
-               <div id="gallery-placeholder" class="gallery-placeholder hidden">
-                    <span class="material-symbols-outlined">image_search</span>
-                    <p>No images found. Go generate something amazing!</p>
-               </div>
+    <div id="node-dock" class="node-dock">
+      <div class="dock-section">
+        <div class="node-dock-button" data-node-type="input_image">
+          <span class="material-symbols-outlined">add_photo_alternate</span>
+          <span class="dock-label">Img2Img</span>
+        </div>
+        <div class="node-dock-button" data-node-type="lora">
+          <span class="material-symbols-outlined">extension</span>
+          <span class="dock-label">Add LoRA</span>
+        </div>
+        <div class="node-dock-button" data-node-type="vae_tiling">
+          <span class="material-symbols-outlined">grid_on</span>
+          <span class="dock-label">VAE Tiling</span>
+        </div>
+        <div class="node-dock-button" data-node-type="cpu_offload">
+          <span class="material-symbols-outlined">memory_alt</span>
+          <span class="dock-label">CPU Offload</span>
+        </div>
+      </div>
+      <div class="dock-divider"></div>
+      <div class="dock-section">
+        <button
+          id="dock-load-model-btn"
+          class="btn btn-primary btn-dock-action"
+        >
+          <span class="material-symbols-outlined">download</span> Load Model
+        </button>
+        <button
+          id="dock-generate-btn"
+          class="btn btn-primary btn-dock-action btn-generate"
+          disabled
+        >
+          <span class="material-symbols-outlined">auto_awesome</span> Generate
+        </button>
+      </div>
+    </div>
+
+    <div id="lightbox" class="lightbox hidden">
+      <div class="lightbox-header">
+        <p id="lightbox-caption" class="lightbox-caption"></p>
+        <div class="lightbox-actions">
+          <button id="lightbox-zoom-out" title="Zoom Out ( - )">
+            <span class="material-symbols-outlined">zoom_out</span>
+          </button>
+          <button id="lightbox-zoom-in" title="Zoom In ( + )">
+            <span class="material-symbols-outlined">zoom_in</span>
+          </button>
+          <button id="lightbox-fit" title="Fit to Screen ( F )">
+            <span class="material-symbols-outlined">fit_screen</span>
+          </button>
+          <button id="lightbox-delete" title="Delete Image ( Del )">
+            <span class="material-symbols-outlined">delete</span>
+          </button>
+          <button id="lightbox-close" title="Close ( Esc )">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+      </div>
+      <button id="lightbox-prev" class="lightbox-nav prev" title="Previous (←)">
+        <span class="material-symbols-outlined">arrow_back_ios</span>
+      </button>
+      <div id="lightbox-image-wrapper">
+        <img id="lightbox-img" src="" alt="Lightbox Image" />
+      </div>
+      <button id="lightbox-next" class="lightbox-nav next" title="Next (→)">
+        <span class="material-symbols-outlined">arrow_forward_ios</span>
+      </button>
+    </div>
+
+    <div id="dialog-overlay" class="dialog-overlay hidden">
+      <div class="dialog-box">
+        <h3 id="dialog-title" class="dialog-title"></h3>
+        <p id="dialog-message" class="dialog-message"></p>
+        <div id="dialog-buttons" class="dialog-buttons"></div>
+      </div>
+    </div>
+
+    <div id="prompt-editor-overlay" class="dialog-overlay hidden">
+      <div class="dialog-box" style="max-width: 600px">
+        <h3 id="prompt-editor-title" class="dialog-title">Add New Prompt</h3>
+        <div class="control-group">
+          <label for="prompt-title">Title</label
+          ><input
+            type="text"
+            id="prompt-title"
+            class="form-input"
+            placeholder="e.g., Cyberpunk City"
+          />
+        </div>
+        <div class="control-group">
+          <label for="prompt-content">Prompt</label>
+          <div class="autoresize-textarea-wrapper">
+            <textarea
+              id="prompt-content"
+              class="form-textarea"
+              placeholder="A sprawling cityscape at night..."
+            ></textarea>
           </div>
-
-          <div id="page-prompt-book" class="page-content hidden">
-               <div class="page-header">
-                    <h1 class="page-title">Prompt Book</h1>
-                    <div>
-                         <button id="add-prompt-btn" class="btn btn-primary"><span
-                                   class="material-symbols-outlined">add</span> New Prompt</button>
-                         <button id="refresh-prompts-btn" class="btn btn-secondary"><span
-                                   class="material-symbols-outlined">refresh</span></button>
-                    </div>
-               </div>
-               <div id="prompt-book-grid" class="prompt-book-grid"></div>
-               <div id="prompt-book-placeholder" class="gallery-placeholder hidden">
-                    <span class="material-symbols-outlined">stylebook</span>
-                    <p>Your saved prompts will appear here.</p>
-               </div>
+        </div>
+        <div class="control-group">
+          <label for="prompt-negative">Negative Prompt (Optional)</label>
+          <div class="autoresize-textarea-wrapper">
+            <textarea
+              id="prompt-negative"
+              class="form-textarea"
+              placeholder="e.g., daylight, blurry, jpeg artifacts"
+            ></textarea>
           </div>
+        </div>
+        <div id="prompt-editor-buttons" class="dialog-buttons"></div>
+      </div>
+    </div>
 
-          <div id="page-settings" class="page-content hidden">
-               <div class="page-header">
-                    <h1 class="page-title">File Management</h1>
-               </div>
-               <div class="settings-container">
-                    <div class="settings-column">
-                         <div class="settings-header">
-                              <h2>Models</h2>
-                              <button id="refresh-models-btn" class="icon-btn"><span
-                                        class="material-symbols-outlined">refresh</span></button>
-                         </div>
-                         <div id="models-list" class="file-list"></div>
-                    </div>
-                    <div class="settings-column">
-                         <div class="settings-header">
-                              <h2>LoRAs</h2>
-                              <button id="refresh-loras-btn" class="icon-btn"><span
-                                        class="material-symbols-outlined">refresh</span></button>
-                         </div>
-                         <div id="loras-list" class="file-list"></div>
-                    </div>
-               </div>
-          </div>
-     </main>
+    <template id="file-item-template">
+      <div class="file-item">
+        <span class="file-name"></span>
+        <button class="icon-btn file-delete-btn" title="Delete File">
+          <span class="material-symbols-outlined">delete</span>
+        </button>
+      </div>
+    </template>
 
-     <div id="node-dock" class="node-dock">
-          <div class="dock-section">
-               <div class="node-dock-button" data-node-type="input_image">
-                    <span class="material-symbols-outlined">add_photo_alternate</span>
-                    <span class="dock-label">Img2Img</span>
-               </div>
-               <div class="node-dock-button" data-node-type="lora">
-                    <span class="material-symbols-outlined">extension</span>
-                    <span class="dock-label">Add LoRA</span>
-               </div>
-               <div class="node-dock-button" data-node-type="vae_tiling">
-                    <span class="material-symbols-outlined">grid_on</span>
-                    <span class="dock-label">VAE Tiling</span>
-               </div>
-               <div class="node-dock-button" data-node-type="cpu_offload">
-                    <span class="material-symbols-outlined">memory_alt</span>
-                    <span class="dock-label">CPU Offload</span>
-               </div>
-          </div>
-          <div class="dock-divider"></div>
-          <div class="dock-section">
-               <button id="dock-load-model-btn" class="btn btn-primary btn-dock-action">
-                    <span class="material-symbols-outlined">download</span> Load Model
-               </button>
-               <button id="dock-generate-btn" class="btn btn-primary btn-dock-action btn-generate" disabled>
-                    <span class="material-symbols-outlined">auto_awesome</span> Generate
-               </button>
-          </div>
-     </div>
-
-     <div id="lightbox" class="lightbox hidden">
-          <div class="lightbox-header">
-               <p id="lightbox-caption" class="lightbox-caption"></p>
-               <div class="lightbox-actions">
-                    <button id="lightbox-zoom-out" title="Zoom Out ( - )"><span
-                              class="material-symbols-outlined">zoom_out</span></button>
-                    <button id="lightbox-zoom-in" title="Zoom In ( + )"><span
-                              class="material-symbols-outlined">zoom_in</span></button>
-                    <button id="lightbox-fit" title="Fit to Screen ( F )"><span
-                              class="material-symbols-outlined">fit_screen</span></button>
-                    <button id="lightbox-delete" title="Delete Image ( Del )"><span
-                              class="material-symbols-outlined">delete</span></button>
-                    <button id="lightbox-close" title="Close ( Esc )"><span
-                              class="material-symbols-outlined">close</span></button>
-               </div>
-          </div>
-          <button id="lightbox-prev" class="lightbox-nav prev" title="Previous (←)"><span
-                    class="material-symbols-outlined">arrow_back_ios</span></button>
-          <div id="lightbox-image-wrapper"><img id="lightbox-img" src="" alt="Lightbox Image" /></div>
-          <button id="lightbox-next" class="lightbox-nav next" title="Next (→)"><span
-                    class="material-symbols-outlined">arrow_forward_ios</span></button>
-     </div>
-
-     <div id="dialog-overlay" class="dialog-overlay hidden">
-          <div class="dialog-box">
-               <h3 id="dialog-title" class="dialog-title"></h3>
-               <p id="dialog-message" class="dialog-message"></p>
-               <div id="dialog-buttons" class="dialog-buttons"></div>
-          </div>
-     </div>
-
-     <div id="prompt-editor-overlay" class="dialog-overlay hidden">
-          <div class="dialog-box" style="max-width: 600px;">
-               <h3 id="prompt-editor-title" class="dialog-title">Add New Prompt</h3>
-               <div class="control-group"><label for="prompt-title">Title</label><input type="text" id="prompt-title"
-                         class="form-input" placeholder="e.g., Cyberpunk City"></div>
-               <div class="control-group"><label for="prompt-content">Prompt</label>
-                    <div class="autoresize-textarea-wrapper">
-                         <textarea id="prompt-content" class="form-textarea"
-                              placeholder="A sprawling cityscape at night..."></textarea>
-                    </div>
-               </div>
-               <div class="control-group"><label for="prompt-negative">Negative Prompt (Optional)</label>
-                    <div class="autoresize-textarea-wrapper">
-                         <textarea id="prompt-negative" class="form-textarea"
-                              placeholder="e.g., daylight, blurry, jpeg artifacts"></textarea>
-                    </div>
-               </div>
-               <div id="prompt-editor-buttons" class="dialog-buttons"></div>
-          </div>
-     </div>
-
-     <template id="file-item-template">
-          <div class="file-item">
-               <span class="file-name"></span>
-               <button class="icon-btn file-delete-btn" title="Delete File">
-                    <span class="material-symbols-outlined">delete</span>
-               </button>
-          </div>
-     </template>
-
-     <script src="/static/js/main.js"></script>
-</body>
-
+    <script src="/static/js/main.js"></script>
+  </body>
 </html>

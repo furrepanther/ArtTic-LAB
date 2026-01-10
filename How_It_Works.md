@@ -1,4 +1,5 @@
 # Note: THIS FILE IS AI GENERATED
+
 # ⚙️ How ArtTic-LAB Works: A Technical Deep Dive
 
 Welcome to the engine room of ArtTic-LAB. This document is the definitive technical guide to the application's architecture, core logic, and optimization strategies. It explains how ArtTic-LAB delivers a high-performance, artist-centric experience, specifically engineered for Intel® Arc™ GPUs.
@@ -92,12 +93,10 @@ This is what makes ArtTic-LAB a premier tool for Intel hardware.
 VRAM is a precious resource, and ArtTic-LAB employs a comprehensive strategy to manage it.
 
 - **Layer 1: Proactive (VRAM Estimation)**
-
   - **How**: The `_calculate_max_resolution` function is called when a model is loaded. It queries `torch.xpu.get_device_properties(0).total_memory` and `torch.xpu.memory_reserved(0)` to calculate the _truly free_ VRAM. It then uses a heuristic dictionary of `vram_per_megapixel` values (tested for different architectures) to estimate a safe maximum square resolution and sends this to the UI.
   - **Analogy**: Before you try to lift a heavy box, you instinctively size it up. ArtTic-LAB does the same for your GPU, advising you on a safe limit to prevent you from "straining" your hardware.
 
 - **Layer 2: Reactive (Graceful OOM Handling)**
-
   - **How**: The `generate_image` function wraps the pipeline call in a `try...except torch.OutOfMemoryError` block. If an Out-of-Memory error occurs, it immediately calls `torch.xpu.empty_cache()` to free fragmented memory and then raises a custom, clean `OOMError` that is sent to the UI as a user-friendly notification.
   - **Analogy**: If you do try to lift a box that's too heavy and fail, you drop it safely instead of crashing to the floor. The app now does this, cleaning up the mess (clearing VRAM) and telling you what happened without breaking.
 

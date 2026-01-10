@@ -2,6 +2,7 @@ import logging
 import sys
 import http
 import torch
+
 try:
     import intel_extension_for_pytorch as ipex
 except ImportError:
@@ -104,7 +105,9 @@ def log_system_info():
             f"  NVIDIA GPU: {CustomFormatter.MINT_2}{gpu_name}{CustomFormatter.RESET} (Detected)"
         )
     else:
-        logger.warning(f"  GPU: {CustomFormatter.ORANGE}Not Detected{CustomFormatter.RESET}. Running on CPU (Expect slow performance).")
+        logger.warning(
+            f"  GPU: {CustomFormatter.ORANGE}Not Detected{CustomFormatter.RESET}. Running on CPU (Expect slow performance)."
+        )
 
     logger.info("-" * 60)
 

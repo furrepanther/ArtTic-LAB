@@ -41,7 +41,6 @@ ArtTic-LAB adapts to your preferred workflow — visual or terminal-based.
   </div>
 </div>
 
-
 ---
 
 ## 🔬 Feature Deep Dive
@@ -78,7 +77,6 @@ We’ve packed ArtTic-LAB with features designed to maximize performance and str
   <img src="assets/demos/9.png" alt="Demo 9" width="256" style="border-radius: 10px; object-fit: cover;"/>
   <img src="assets/demos/10.png" alt="Demo 10" width="256" style="border-radius: 10px; object-fit: cover;"/>
 </div>
-
 
 ---
 

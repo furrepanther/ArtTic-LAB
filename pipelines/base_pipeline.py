@@ -1,5 +1,6 @@
 # pipelines/base_pipeline.py
 import torch
+
 try:
     import intel_extension_for_pytorch as ipex
 except ImportError:
