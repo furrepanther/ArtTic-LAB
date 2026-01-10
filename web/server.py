@@ -11,6 +11,11 @@ import os
 APP_LOGGER_NAME = "arttic_lab"
 logger = logging.getLogger(APP_LOGGER_NAME)
 
+# Ensure directories exist
+os.makedirs("outputs", exist_ok=True)
+os.makedirs("models", exist_ok=True)
+os.makedirs("loras", exist_ok=True)
+
 app = FastAPI()
 
 app.mount("/static", StaticFiles(directory="web/static"), name="static")

@@ -251,20 +251,28 @@ def unload_model():
         }
     )
 
-    torch.xpu.empty_cache()
+    if hasattr(torch, "xpu") and torch.xpu.is_available():
+        torch.xpu.empty_cache()
+    elif torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     logger.info("Model unloaded and VRAM cache cleared.")
     return {"status_message": app_state["status_message"]}
 
 
 def _calculate_max_resolution(model_type):
-    if not torch.xpu.is_available():
+    if hasattr(torch, "xpu") and torch.xpu.is_available():
+        GB = 1024**3
+        total_mem = torch.xpu.get_device_properties(0).total_memory / GB
+        reserved_mem = torch.xpu.memory_reserved(0) / GB
+        free_mem = total_mem - reserved_mem
+    elif torch.cuda.is_available():
+        GB = 1024**3
+        total_mem = torch.cuda.get_device_properties(0).total_memory / GB
+        reserved_mem = torch.cuda.memory_reserved(0) / GB
+        free_mem = total_mem - reserved_mem
+    else:
         return 1024
-
-    GB = 1024**3
-    total_mem = torch.xpu.get_device_properties(0).total_memory / GB
-    reserved_mem = torch.xpu.memory_reserved(0) / GB
-    free_mem = total_mem - reserved_mem
 
     vram_per_megapixel = {
         "SD 1.5": 0.9,
@@ -456,7 +464,13 @@ def generate_image(
     logger.info("Starting image generation...")
     start_time = time.time()
     seed = int(seed if seed is not None else random.randint(0, 2**32 - 1))
-    generator = torch.Generator("xpu").manual_seed(seed)
+
+    if hasattr(torch, "xpu") and torch.xpu.is_available():
+        generator = torch.Generator("xpu").manual_seed(seed)
+    elif torch.cuda.is_available():
+        generator = torch.Generator("cuda").manual_seed(seed)
+    else:
+        generator = torch.Generator("cpu").manual_seed(seed)
 
     def pipeline_progress_callback(pipe, step, timestep, callback_kwargs):
         progress = step / int(steps)
@@ -489,10 +503,14 @@ def generate_image(
     try:
         image = app_state["current_pipe"].generate(**gen_kwargs).images[0]
     except torch.OutOfMemoryError as e:
-        torch.xpu.empty_cache()
-        logger.error(f"XPU Out of Memory during generation: {e}")
+        if hasattr(torch, "xpu") and torch.xpu.is_available():
+            torch.xpu.empty_cache()
+        elif torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        logger.error(f"Out of Memory during generation: {e}")
         raise OOMError(
-            "Your GPU ran out of memory while generating the image. Try reducing the resolution or steps."
+            "Your device ran out of memory while generating the image. Try reducing the resolution or steps."
         )
 
     generation_time = time.time() - start_time

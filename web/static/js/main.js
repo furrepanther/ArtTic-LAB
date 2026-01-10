@@ -617,6 +617,10 @@ document.addEventListener("DOMContentLoaded", () => {
         header = `<h3 class="node-title">Input Image</h3>`;
         content = `
         <div class="node-content">
+            <div class="input-image-warning" style="color: var(--warning-color, #f59e0b); font-size: 0.85em; margin-bottom: 8px; padding: 4px; border: 1px solid var(--warning-color, #f59e0b); border-radius: 4px; background: rgba(245, 158, 11, 0.1);">
+                <span class="material-symbols-outlined" style="font-size: 1.2em; vertical-align: bottom;">warning</span>
+                Unstable: Not tested due to lack of VRAM.
+            </div>
             <div class="input-image-dropzone" id="input-image-dropzone">
                 <span class="material-symbols-outlined">add_photo_alternate</span>
                 <p>Drag & Drop or Click</p>

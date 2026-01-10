@@ -2,7 +2,10 @@ import logging
 import sys
 import http
 import torch
-import intel_extension_for_pytorch as ipex
+try:
+    import intel_extension_for_pytorch as ipex
+except ImportError:
+    ipex = None
 import diffusers
 
 APP_LOGGER_NAME = "arttic_lab"
@@ -84,17 +87,24 @@ def log_system_info():
     py_version = (
         f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     )
+
+    ipex_version = ipex.__version__ if ipex else "Not Installed"
     logger.info(
-        f"  Python: {py_version}, Torch: {torch.__version__}, IPEX: {ipex.__version__}, Diffusers: {diffusers.__version__}"
+        f"  Python: {py_version}, Torch: {torch.__version__}, IPEX: {ipex_version}, Diffusers: {diffusers.__version__}"
     )
 
-    if torch.xpu.is_available():
+    if hasattr(torch, "xpu") and torch.xpu.is_available():
         gpu_name = torch.xpu.get_device_name(0)
         logger.info(
             f"  Intel GPU: {CustomFormatter.MINT_2}{gpu_name}{CustomFormatter.RESET} (Detected)"
         )
+    elif torch.cuda.is_available():
+        gpu_name = torch.cuda.get_device_name(0)
+        logger.info(
+            f"  NVIDIA GPU: {CustomFormatter.MINT_2}{gpu_name}{CustomFormatter.RESET} (Detected)"
+        )
     else:
-        logger.error("  Intel GPU: Not Detected! The application may not work.")
+        logger.warning(f"  GPU: {CustomFormatter.ORANGE}Not Detected{CustomFormatter.RESET}. Running on CPU (Expect slow performance).")
 
     logger.info("-" * 60)
 
