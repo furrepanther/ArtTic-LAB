@@ -2,15 +2,10 @@ import logging
 import sys
 import http
 import torch
-
-try:
-    import intel_extension_for_pytorch as ipex
-except ImportError:
-    ipex = None
 import diffusers
 
 APP_LOGGER_NAME = "arttic_lab"
-APP_VERSION = "3.2.0"
+APP_VERSION = "4.0.0"
 
 
 class ArtTicFilter(logging.Filter):
@@ -29,7 +24,6 @@ class CustomFormatter(logging.Formatter):
     ORANGE = "\x1b[38;2;249;115;22m"
     GREY = "\x1b[38;2;156;163;175m"
     RESET = "\x1b[0m"
-
     FORMATS = {
         logging.INFO: f"{MINT_2}[ArtTic-LAB] >{RESET} %(message)s",
         logging.WARNING: f"{ORANGE}[ArtTic-LAB] [WARN] >{RESET} %(message)s",
@@ -49,7 +43,6 @@ class UvicornAccessFormatter(logging.Formatter):
             status_phrase = http.HTTPStatus(status_code).phrase
         except (IndexError, ValueError):
             return super().format(record)
-
         if status_code >= 500:
             status_color = CustomFormatter.RED_BRIGHT
         elif status_code >= 400:
@@ -58,7 +51,6 @@ class UvicornAccessFormatter(logging.Formatter):
             status_color = CustomFormatter.GREY
         else:
             status_color = CustomFormatter.SEA_GREEN
-
         return (
             f"{CustomFormatter.DARTMOUTH_GREEN}[Web]{CustomFormatter.RESET} "
             f"{record.args[1]} {record.args[2]} -> "
@@ -68,7 +60,6 @@ class UvicornAccessFormatter(logging.Formatter):
 
 def log_system_info():
     logger = logging.getLogger(APP_LOGGER_NAME)
-
     art = f"""
     {CustomFormatter.CELADON}     █████╗ ██████╗ ████████╗ ████████╗██╗ ██████╗          ██╗      █████╗ ██████╗ 
     {CustomFormatter.MINT_2}    ██╔══██╗██╔══██╗╚══██╔══╝ ╚══██╔══╝██║██╔════╝          ██║     ██╔══██╗██╔══██╗
@@ -79,36 +70,30 @@ def log_system_info():
     {CustomFormatter.RESET}
     """
     print(art)
-
     logger.info(f"Welcome to ArtTic-LAB v{APP_VERSION}!")
-    logger.info("A modern, clean, and powerful UI for Intel ARC GPUs.")
+    logger.info("Multi-GPU Architecture (Intel XPU / NVIDIA CUDA / AMD ROCm)")
     logger.info("-" * 60)
     logger.info("System Information:")
-
     py_version = (
         f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     )
-
-    ipex_version = ipex.__version__ if ipex else "Not Installed"
     logger.info(
-        f"  Python: {py_version}, Torch: {torch.__version__}, IPEX: {ipex_version}, Diffusers: {diffusers.__version__}"
+        f"  Python: {py_version}, Torch: {torch.__version__}, Diffusers: {diffusers.__version__}"
     )
-
     if hasattr(torch, "xpu") and torch.xpu.is_available():
         gpu_name = torch.xpu.get_device_name(0)
         logger.info(
-            f"  Intel GPU: {CustomFormatter.MINT_2}{gpu_name}{CustomFormatter.RESET} (Detected)"
+            f"  Intel GPU: {CustomFormatter.MINT_2}{gpu_name}{CustomFormatter.RESET} (Native XPU Detected)"
         )
     elif torch.cuda.is_available():
         gpu_name = torch.cuda.get_device_name(0)
         logger.info(
-            f"  NVIDIA GPU: {CustomFormatter.MINT_2}{gpu_name}{CustomFormatter.RESET} (Detected)"
+            f"  NVIDIA/AMD GPU: {CustomFormatter.MINT_2}{gpu_name}{CustomFormatter.RESET} (CUDA Detected)"
         )
     else:
         logger.warning(
             f"  GPU: {CustomFormatter.ORANGE}Not Detected{CustomFormatter.RESET}. Running on CPU (Expect slow performance)."
         )
-
     logger.info("-" * 60)
 
 
@@ -118,17 +103,13 @@ def setup_logging(disable_filters=False):
             level=logging.INFO, format="[%(name)s] [%(levelname)s] > %(message)s"
         )
         return
-
     logging.getLogger().addHandler(logging.NullHandler())
     logging.getLogger().setLevel(logging.ERROR)
-
     app_logger = logging.getLogger(APP_LOGGER_NAME)
     app_logger.setLevel(logging.INFO)
     app_logger.propagate = False
-
     if app_logger.hasHandlers():
         app_logger.handlers.clear()
-
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(CustomFormatter())
     handler.addFilter(ArtTicFilter())
@@ -143,7 +124,6 @@ def setup_web_logging():
     error_handler = logging.StreamHandler(sys.stderr)
     error_handler.setFormatter(CustomFormatter())
     uvicorn_error_logger.addHandler(error_handler)
-
     uvicorn_access_logger = logging.getLogger("uvicorn.access")
     uvicorn_access_logger.propagate = False
     if uvicorn_access_logger.hasHandlers():

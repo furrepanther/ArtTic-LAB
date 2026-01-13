@@ -2,13 +2,15 @@
 
 # ⚙️ How ArtTic-LAB Works: A Technical Deep Dive
 
-Welcome to the engine room of ArtTic-LAB. This document is the definitive technical guide to the application's architecture, core logic, and optimization strategies. It explains how ArtTic-LAB delivers a high-performance, artist-centric experience, specifically engineered for Intel® Arc™ GPUs.
+Welcome to the engine room of ArtTic-LAB. This document is the definitive technical guide to the application's architecture, core logic, and optimization strategies.
+
+While originally forged for Intel® Arc™ GPUs, ArtTic-LAB v4.0 has evolved into a hardware-agnostic powerhouse. It now leverages **Native PyTorch** implementations for Intel (XPU), NVIDIA (CUDA), and AMD (ROCm), alongside the **SDNQ** quantization engine for superior memory efficiency.
 
 The project's philosophy is built on three pillars:
 
-1.  **Performance First:** Every decision is weighed against its impact on generation speed and VRAM efficiency on Intel hardware.
+1.  **Hardware Agnosticism with Specialist Tuning:** We use native PyTorch APIs (like `torch.xpu` for Intel, `torch.cuda` for NVIDIA) to support hardware without heavy external wrappers, while leveraging `sdnq` for advanced quantization strategies on all platforms.
 2.  **Frictionless User Experience:** The interface must be intuitive, responsive, and powerful, removing barriers between the artist and their creation.
-3.  **Intel-Native Architecture:** We build with the assumption that the primary hardware is an Intel Arc GPU, allowing us to leverage its unique capabilities from the ground up.
+3.  **Modern Architecture:** We build on the latest PyTorch (2.9+) features, discarding legacy optimization libraries (like IPEX) in favor of upstream native support.
 
 ---
 
@@ -21,7 +23,9 @@ From a single click to a final image, a request flows through a carefully orches
 3.  **Async Backend Ingestion (`web/server.py`)**: A **FastAPI** server, running under **Uvicorn**, listens on the `/ws` endpoint. It receives the JSON message and identifies the requested `action`.
 4.  **Offloading to Worker Thread**: To prevent the entire server from freezing during heavy computation, FastAPI does **not** run the task directly. Instead, it uses `await asyncio.to_thread(...)` to delegate the blocking, synchronous function (e.g., `core.logic.generate_image`) to a separate worker thread from Python's default thread pool.
 5.  **Core Logic Execution (`core/logic.py`)**: Now running in the background, the function in `core/logic` takes over. It validates inputs, prepares the necessary parameters (like PyTorch generators and schedulers), and invokes the appropriate method on the currently loaded diffusion pipeline.
-6.  **Pipeline & GPU Execution (`pipelines/`, `torch`, `ipex`)**: The specialized pipeline object executes the diffusion process. This is where the **Intel Arc Optimization Stack** comes into play: IPEX-optimized modules and `bfloat16` precision are used to perform the inference steps at maximum speed on the XPU.
+6.  **Pipeline & Quantization (`pipelines/`, `sdnq`)**: The specialized pipeline object executes the diffusion process.
+    - **SDNQ Integration**: The `sdnq` library is utilized during the loading phase. It applies quantization configurations to the model components (UNet, Transformer) to reduce VRAM usage without sacrificing quality. This replaces legacy IPEX optimizations.
+    - **Native Execution**: Operations run on `xpu` (Intel), `cuda` (NVIDIA), or `hip` (AMD) based on what PyTorch automatically detects at runtime.
 7.  **Real-time Progress Feedback**: During model loading and image generation, the backend functions call a `progress_callback`. This callback sends small JSON messages back over the WebSocket to the original client, which are used to update the non-blocking notification toasts in the UI in real-time.
 8.  **Result Handling**: Once the pipeline returns the generated image, `core/logic` saves it to the `./outputs` directory, embeds its generation parameters as PNG metadata, and sends a final `generation_complete` message over the WebSocket.
 9.  **Frontend Update**: The UI receives the completion message and updates the "Image Preview" node with the new image, ready for the next creative iteration.
@@ -66,40 +70,42 @@ This module is a powerful abstraction layer for handling different diffusion mod
   - e.g., if keys start with `conditioner.embedders.1`, it's an **SDXL** model.
   - e.g., if keys contain `transformer.` but not `input_blocks`, it's a **FLUX** model.
   - e.g., if keys start with `text_encoders.`, it's an **SD3** model.
-- **Specialized Pipeline Classes**: Each model type (`SD15Pipeline`, `SDXLPipeline`, `ArtTicFLUXPipeline`, etc.) inherits from a `base_pipeline.py`. This object-oriented design allows for specialized loading logic (e.g., FLUX and SD3 models require loading base components from Hugging Face) while sharing common methods for optimization (`optimize_with_ipex`) and device placement.
+- **Specialized Pipeline Classes**: Each model type (`SD15Pipeline`, `SDXLPipeline`, `ArtTicFLUXPipeline`, etc.) inherits from a `base_pipeline.py`. This object-oriented design allows for specialized loading logic (e.g., FLUX and SD3 models require loading base components from Hugging Face) and handles the injection of **SDNQ** optimization hooks directly into the UNet or Transformer models.
 
 ---
 
-## ✨ The Intel ARC Optimization Stack: The Secret Sauce
+## ✨ The Modern Optimization Stack
 
-This is what makes ArtTic-LAB a premier tool for Intel hardware.
+### 1. **Native PyTorch XPU (Intel Arc)**
 
-### 1. **IPEX (Intel® Extension for PyTorch)**
+- **What it is**: Starting with PyTorch 2.9 (Nightly) and 2.10+, support for Intel XPU is native. The deprecated IPEX (Intel Extension for PyTorch) has been removed.
+- **How it's used**: We simply call `.to("xpu")` if `torch.xpu.is_available()` returns true. This provides better stability and future-proofing than the previous IPEX wrapper. Environment variables for Intel performance (like `ONEAPI_DEVICE_SELECTOR`) are now managed natively within the Conda environment configuration (`conda env config vars set`).
 
-- **What it is**: A PyTorch library from Intel that deeply optimizes AI models for Intel hardware, including CPUs and XPUs (ARC GPUs).
-- **How it's used**: After a model's components (like the UNet and VAE) are loaded, we pass them to `ipex.optimize()`. This triggers a Just-In-Time (JIT) compilation process that performs several optimizations:
-  - **Graph Fusion**: Fuses multiple operations into a single, more efficient kernel to reduce overhead.
-  - **Operator Optimization**: Replaces standard PyTorch operators with highly optimized versions written specifically for Intel hardware.
-- **Analogy**: IPEX is like a Formula 1 race engineering team that custom-tunes a standard engine for a specific race track (your Arc GPU), squeezing out every last drop of performance.
+### 2. **SDNQ (SD.Next Quantization)**
 
-### 2. **`bfloat16` Mixed Precision**
+- **What it is**: A powerful quantization engine that allows models to run with significantly reduced VRAM usage and minimal precision loss.
+- **How it's used**: The `sdnq` library is initialized at the start of the pipeline process. We use `apply_sdnq_options_to_model` to wrap the Transformer or UNet components. This enables support for:
+  - Pre-quantized models (e.g., `int8`, `uint8`).
+  - Dynamic quantization strategies during inference.
+  - Automatic optimization of MatMul operations.
+
+### 3. **`bfloat16` Mixed Precision**
 
 - **What it is**: `bfloat16` (Brain Floating Point) is a 16-bit number format that offers a similar dynamic range to standard 32-bit floats but with half the memory footprint.
-- **How it's used**: The entire generation process is wrapped in `torch.xpu.amp.autocast(enabled=True, dtype=torch.bfloat16)`. This tells PyTorch to automatically perform most calculations in the faster, less memory-intensive `bfloat16` format. The XPU hardware on Arc GPUs is specifically designed to accelerate these 16-bit computations.
-- **Analogy**: It's like intelligently rounding long decimal numbers during a complex calculation. It's much faster and uses less space on your paper, but you still arrive at the correct final result.
+- **How it's used**: The entire generation process is wrapped in `torch.autocast(device_type, enabled=True, dtype=torch.bfloat16)`. This tells PyTorch to automatically perform most calculations in the faster, less memory-intensive `bfloat16` format on the target device.
 
-### 3. **A Multi-Layered Memory Management Strategy**
+### 4. **Multi-Layered Memory Management**
 
 VRAM is a precious resource, and ArtTic-LAB employs a comprehensive strategy to manage it.
 
 - **Layer 1: Proactive (VRAM Estimation)**
-  - **How**: The `_calculate_max_resolution` function is called when a model is loaded. It queries `torch.xpu.get_device_properties(0).total_memory` and `torch.xpu.memory_reserved(0)` to calculate the _truly free_ VRAM. It then uses a heuristic dictionary of `vram_per_megapixel` values (tested for different architectures) to estimate a safe maximum square resolution and sends this to the UI.
-  - **Analogy**: Before you try to lift a heavy box, you instinctively size it up. ArtTic-LAB does the same for your GPU, advising you on a safe limit to prevent you from "straining" your hardware.
-
+  - **How**: The `_calculate_max_resolution` function queries device properties (checking `torch.xpu` or `torch.cuda`) to calculate _truly free_ VRAM. It uses a heuristic dictionary of `vram_per_megapixel` values to estimate a safe maximum square resolution.
 - **Layer 2: Reactive (Graceful OOM Handling)**
-  - **How**: The `generate_image` function wraps the pipeline call in a `try...except torch.OutOfMemoryError` block. If an Out-of-Memory error occurs, it immediately calls `torch.xpu.empty_cache()` to free fragmented memory and then raises a custom, clean `OOMError` that is sent to the UI as a user-friendly notification.
-  - **Analogy**: If you do try to lift a box that's too heavy and fail, you drop it safely instead of crashing to the floor. The app now does this, cleaning up the mess (clearing VRAM) and telling you what happened without breaking.
-
+  - **How**: The `generate_image` function wraps the pipeline call in a `try...except torch.OutOfMemoryError` block. If an OOM error occurs, it calls `empty_cache()` and notifies the UI.
 - **Layer 3: Auxiliary Tools (User-Controlled)**
-  - **VAE Tiling & Slicing**: These `diffusers` features are exposed as a toggle. When enabled, the VAE (which decodes the final image) operates on smaller tiles, drastically reducing peak VRAM usage during the final step, which is often a bottleneck for high-resolution images.
-  - **CPU Offloading**: This feature keeps the massive model weights in system RAM and only moves the necessary components to the GPU's VRAM just before they are used. It's slower, but it allows users on lower-VRAM cards to run larger models that would otherwise be impossible.
+  - **VAE Tiling & Slicing**: Toggles VAE decoding to operate on smaller tiles.
+  - **CPU Offloading**: Keeps massive model weights in system RAM and only moves necessary components to the GPU's VRAM just before use.
+
+```
+
+```

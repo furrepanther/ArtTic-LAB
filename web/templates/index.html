@@ -5,10 +5,8 @@
     <meta content="width=device-width, initial-scale=1.0" name="viewport" />
     <title>ArtTic-LAB</title>
     <link rel="icon" href="/static/asset/logo.png" type="image/svg+xml" />
-    <link href="/icons/outlined.css" rel="stylesheet" />
     <link href="/static/css/style.css" rel="stylesheet" />
   </head>
-
   <body>
     <header class="top-bar">
       <div class="logo-brand">
@@ -61,15 +59,12 @@
         </div>
       </div>
     </header>
-
     <div id="notification-container"></div>
-
     <main class="main-content">
       <div id="page-generate" class="page-content">
         <svg id="node-connector-svg" class="node-connector-svg"></svg>
         <div id="node-canvas" class="node-canvas"></div>
       </div>
-
       <div id="page-gallery" class="page-content hidden">
         <div class="page-header">
           <h1 class="page-title">Your Generations</h1>
@@ -83,7 +78,6 @@
           <p>No images found. Go generate something amazing!</p>
         </div>
       </div>
-
       <div id="page-prompt-book" class="page-content hidden">
         <div class="page-header">
           <h1 class="page-title">Prompt Book</h1>
@@ -102,7 +96,6 @@
           <p>Your saved prompts will appear here.</p>
         </div>
       </div>
-
       <div id="page-settings" class="page-content hidden">
         <div class="page-header">
           <h1 class="page-title">File Management</h1>
@@ -129,7 +122,6 @@
         </div>
       </div>
     </main>
-
     <div id="node-dock" class="node-dock">
       <div class="dock-section">
         <div class="node-dock-button" data-node-type="input_image">
@@ -166,7 +158,6 @@
         </button>
       </div>
     </div>
-
     <div id="lightbox" class="lightbox hidden">
       <div class="lightbox-header">
         <p id="lightbox-caption" class="lightbox-caption"></p>
@@ -198,7 +189,6 @@
         <span class="material-symbols-outlined">arrow_forward_ios</span>
       </button>
     </div>
-
     <div id="dialog-overlay" class="dialog-overlay hidden">
       <div class="dialog-box">
         <h3 id="dialog-title" class="dialog-title"></h3>
@@ -206,7 +196,6 @@
         <div id="dialog-buttons" class="dialog-buttons"></div>
       </div>
     </div>
-
     <div id="prompt-editor-overlay" class="dialog-overlay hidden">
       <div class="dialog-box" style="max-width: 600px">
         <h3 id="prompt-editor-title" class="dialog-title">Add New Prompt</h3>
@@ -242,7 +231,6 @@
         <div id="prompt-editor-buttons" class="dialog-buttons"></div>
       </div>
     </div>
-
     <template id="file-item-template">
       <div class="file-item">
         <span class="file-name"></span>
@@ -251,7 +239,6 @@
         </button>
       </div>
     </template>
-
     <script src="/static/js/main.js"></script>
   </body>
 </html>

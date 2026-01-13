@@ -7,8 +7,12 @@ from .sd3_pipeline import SD3Pipeline
 from .flux_pipeline import ArtTicFLUXPipeline
 import logging
 
+# Import sdnq to patch diffusers/transformers
+try:
+    import sdnq
+except ImportError:
+    pass
 logger = logging.getLogger("arttic_lab")
-
 MODELS_DIR = "./models"
 
 
@@ -40,7 +44,6 @@ def _is_v2(keys):
 def get_pipeline_for_model(model_name):
     model_path = os.path.join(MODELS_DIR, f"{model_name}.safetensors")
     model_name_lower = model_name.lower()
-
     try:
         with safe_open(model_path, framework="pt", device="cpu") as f:
             keys = list(f.keys())
@@ -49,7 +52,6 @@ def get_pipeline_for_model(model_name):
             f"Could not inspect model '{model_name}': {e}. Assuming SD 1.5 as fallback."
         )
         return SD15Pipeline(model_path)
-
     if _is_sd3(keys):
         logger.info(f"Model '{model_name}' detected as SD3.")
         return SD3Pipeline(model_path)

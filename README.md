@@ -2,14 +2,17 @@
   <img src="assets/Banner.png" alt="ArtTic-LAB Banner" width="100%"/>
 </p>
 
-<h2 align="center">Your Portal to AI Artistry, Forged for Intel ARC GPUs 🎨</h2>
+<h2 align="center">Your Portal to AI Artistry, Forged for Intel ARC & Beyond 🎨</h2>
 
 <p align="center">
   <a href="https://opensource.org/licenses/MIT">
     <img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License">
   </a>
-  <a href="https://www.intel.com/content/www/us/en/products/docs/arc-discrete-graphics.html">
-    <img src="https://img.shields.io/badge/Optimized%20for-Intel®%20ARC™-blue.svg?style=for-the-badge&logo=intel" alt="Intel ARC">
+  <a href="https://pytorch.org/">
+    <img src="https://img.shields.io/badge/PyTorch-2.9%2B-orange.svg?style=for-the-badge&logo=pytorch" alt="PyTorch">
+  </a>
+  <a href="https://github.com/disty0/sdnq">
+    <img src="https://img.shields.io/badge/Quantization-SDNQ-green.svg?style=for-the-badge" alt="SDNQ">
   </a>
   <a href="https://github.com/rootLocalGhost/ArtTic-LAB/stargazers">
     <img src="https://img.shields.io/github/stars/rootLocalGhost/ArtTic-LAB?style=for-the-badge&logo=github" alt="Stars">
@@ -21,11 +24,15 @@
 
 ---
 
-ArtTic-LAB is a **modern, clean, and powerful** AI image generation suite, meticulously crafted for the Intel® Arc™ hardware ecosystem.
-It provides a beautiful **custom graphical UI** as the primary experience, with a **robust CLI** as an alternative for scripting and automation.
+ArtTic-LAB is a **modern, clean, and powerful** AI image generation suite.
+
+Originally meticulously crafted for the Intel® Arc™ hardware ecosystem, version 4.0 expands horizons with **Native PyTorch XPU support** and **SDNQ integration**, making it compatible with NVIDIA and AMD GPUs as well.
 
 This isn’t just a wrapper — it’s a ground-up application focused on **performance, aesthetics, and a frictionless user experience**.
-With full support for models from **Stable Diffusion 1.5 → SDXL → SD3 → FLUX**, ArtTic-LAB is the definitive creative tool for ARC users. ✨
+
+With full support for models from **Stable Diffusion 1.5 → SDXL → SD3 → FLUX**, ArtTic-LAB is the definitive creative tool. ✨
+
+> **Note to Users:** The primary developer uses an **Intel Arc A770**. While support for NVIDIA and AMD has been implemented using standard PyTorch APIs, it has not been physically tested by the developer. Please report any issues on GitHub!
 
 ---
 
@@ -49,12 +56,12 @@ We’ve packed ArtTic-LAB with features designed to maximize performance and str
 
 <div align="center">
 
-| Feature Group                  | Description                                                                                                                                                                                                                                                      |
-| :----------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Engineered for Speed 🏎️**    | **IPEX Optimization:** Uses Intel® Extension for PyTorch (IPEX) to JIT-optimize model components (UNet, VAE) for ARC GPUs.<br>**Mixed Precision:** All generations run in `bfloat16` for ~2× faster performance and ~50% VRAM savings with minimal quality loss. |
-| **Intelligent Pipeline 🧠**    | **Auto Model Detection:** Detects architecture (SD1.5 → SD3 → FLUX) from `.safetensors` and loads the right pipeline automatically.<br>**VRAM-Aware Guidance:** Estimates safe maximum resolution to prevent OOM errors before generating.                       |
-| **Total VRAM Control 💧**      | **Proactive OOM Prevention:** Smart resolution limits and one-click model unload.<br>**VAE Tiling & CPU Offloading:** Generate high-res art with minimal VRAM usage.                                                                                             |
-| **Streamlined for Artists ✨** | **Responsive Async UI:** No freezes while generating.<br>**Unified Image Viewer:** Smooth zoom, drag, and gallery controls.<br>**Full Parameter Control:** Prompt, CFG, LoRA, samplers — all unified in a fluid node-based interface.                            |
+| Feature Group                  | Description                                                                                                                                                                                                                                     |
+| :----------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Engineered for Speed 🏎️**    | **Native XPU:** Uses PyTorch 2.9+ Native XPU support for Intel Arc, removing dependency on legacy IPEX.<br>**Mixed Precision:** All generations run in `bfloat16` for ~2× faster performance and ~50% VRAM savings with minimal quality loss.   |
+| **Intelligent Pipeline 🧠**    | **SDNQ Quantization:** Integrated SD.Next Quantization engine for running larger models on smaller VRAM.<br>**Auto Model Detection:** Detects architecture (SD1.5 → SD3 → FLUX) from `.safetensors` and loads the right pipeline automatically. |
+| **Total VRAM Control 💧**      | **Proactive OOM Prevention:** Smart resolution limits and one-click model unload.<br>**VAE Tiling & CPU Offloading:** Generate high-res art with minimal VRAM usage.                                                                            |
+| **Streamlined for Artists ✨** | **Responsive Async UI:** No freezes while generating.<br>**Unified Image Viewer:** Smooth zoom, drag, and gallery controls.<br>**Full Parameter Control:** Prompt, CFG, LoRA, samplers — all unified in a fluid node-based interface.           |
 
 </div>
 
@@ -96,7 +103,19 @@ Download and unzip this project, then run the one-time installer:
 - **Windows 🪟:** `install.bat`
 - **Linux/macOS 🐧:** `chmod +x ./install.sh && ./install.sh`
 
-### 3️⃣ Launch & Create!
+_During installation, you will be prompted to select your hardware accelerator (Intel Arc, NVIDIA, AMD)._
+
+### 3️⃣ Auto-Repair (Intel Users)
+
+If you have an Intel Arc GPU and accidentally installed the wrong PyTorch version (or are unsure), run the repair utility:
+
+```bash
+./ARC-GPU.sh
+```
+
+This script will verify your environment, remove any conflicting CUDA/CPU PyTorch versions, and install the correct Native XPU Nightly build.
+
+### 4️⃣ Launch & Create!
 
 Start the server:
 
@@ -109,6 +128,7 @@ Then open the provided local URL (e.g. `http://127.0.0.1:7860`) in your browser.
 <summary><strong>👉 Optional Launch Arguments</strong></summary>
 
 - `--disable-filters` → Enable full logs for debugging.
+- `--share` → Create a public ngrok link.
 </details>
 
 ---
@@ -127,5 +147,6 @@ ArtTic-LAB/
 ├── 📜app.py         # Main application launcher
 ├── 📜install.bat    # Windows one-click installer
 ├── 📜start.bat      # Windows launcher
+├── 📜ARC-GPU.sh     # Intel Arc Auto-Repair & Setup Utility
 └── 📜...            # Additional project files
 ```

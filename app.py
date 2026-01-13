@@ -12,12 +12,15 @@ from helpers.cli_manager import (
     setup_web_logging,
 )
 
+# Suppress specific warnings for a cleaner console output
 warnings.filterwarnings("ignore", ".*safety_checker.*")
 warnings.filterwarnings("ignore", ".*You have disabled the safety checker.*")
 warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
 
+# Argument Parsing
 parser = argparse.ArgumentParser(
-    description="ArtTic-LAB: A clean UI for Intel ARC GPUs."
+    description="ArtTic-LAB: A clean UI for Multi-GPU AI Art."
 )
 parser.add_argument(
     "--disable-filters", action="store_true", help="Disable custom log filters."
@@ -29,20 +32,22 @@ parser.add_argument("--port", type=int, default=7860, help="Port to run the serv
 parser.add_argument(
     "--share", action="store_true", help="Create a public link using ngrok."
 )
-
 args = parser.parse_args()
 
+# Setup Logging
 setup_logging(disable_filters=args.disable_filters)
 logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def signal_handler(sig, frame):
+    """Handle Ctrl+C to exit gracefully."""
     print("\n")
     logger.info("Ctrl+C detected. Shutting down ArtTic-LAB gracefully...")
     sys.exit(0)
 
 
 def launch_web_ui():
+    """Import and launch the FastAPI server using Uvicorn."""
     try:
         import uvicorn
         from web.server import app as fastapi_app
@@ -86,9 +91,15 @@ def launch_web_ui():
 
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
+
+    # Clear terminal for a clean start
     if not args.disable_filters:
         os.system("cls" if os.name == "nt" else "clear")
+
+    # Ensure required directories exist
     os.makedirs("./outputs", exist_ok=True)
+    os.makedirs("./models", exist_ok=True)
+    os.makedirs("./loras", exist_ok=True)
 
     log_system_info()
     launch_web_ui()

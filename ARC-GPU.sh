@@ -1,71 +1,101 @@
 #!/bin/bash
-
-# Color codes for clean output
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
-NC='\033[0m' # No Color
+NC='\033[0m' 
 
 echo -e "${BLUE}=======================================================${NC}"
-echo -e "${BLUE}     Intel ARC GPU - Linux Performance Optimizer       ${NC}"
+echo -e "${BLUE}     Intel ARC GPU - Setup & Repair Utility            ${NC}"
 echo -e "${BLUE}=======================================================${NC}"
 
-# 1. System Driver Installation
-echo -e "\n${YELLOW}[1/4] Installing System Drivers & Compute Runtimes...${NC}"
-sudo pacman -Sy --needed \
+# 1. Driver Check
+echo -e "\n${YELLOW}[1/4] Checking System Drivers...${NC}"
+if sudo pacman -Sy --needed \
     intel-compute-runtime \
     level-zero-loader \
     level-zero-headers \
     intel-media-driver \
     vulkan-intel \
-    libvpl-intel-gpu \
+    onevpl-intel-gpu \
     clinfo \
-    intel-gpu-tools --noconfirm
+    intel-gpu-tools --noconfirm; then
+    echo -e "${GREEN}System drivers OK.${NC}"
+else
+    echo -e "${RED}Pacman warning ignored (drivers might be up to date).${NC}"
+fi
 
-# 2. Python Environment Setup
-echo -e "\n${YELLOW}[2/4] Configuring Python Environment...${NC}"
+# 2. Environment Configuration
+echo -e "\n${YELLOW}[2/4] Configuring Conda Environment...${NC}"
 ENV_NAME="ArtTic-LAB"
 
-# Find Conda
-if command -v conda &> /dev/null; then
-    eval "$(conda shell.bash hook)"
-    conda activate $ENV_NAME
-else
-    echo -e "${RED}Error: Conda not found. Please install Miniconda/Miniforge first.${NC}"
+if ! command -v conda &> /dev/null; then
+    echo -e "${RED}Error: Conda not found.${NC}"
     exit 1
 fi
 
-echo -e "${GREEN}Activating $ENV_NAME...${NC}"
+eval "$(conda shell.bash hook)"
 
-# 3. Performance Tuning
-echo -e "\n${YELLOW}[4/4] Applying Performance Environment Variables...${NC}"
-
-# We will create a local 'env_vars' file that start.sh can source
-cat << EOF > intel_gpu_vars.sh
-# Intel GPU Performance Tweaks
-export ONEAPI_DEVICE_SELECTOR=level_zero:0
-export IPEX_XPU_ONEDNN_LAYOUT=1
-export IPEX_FORCE_ATTENTION_TYPE=SDP
-export TORCH_LLM_ALLREDUCE=1
-EOF
-
-echo -e "${GREEN}Environment variables generated in 'intel_gpu_vars.sh'${NC}"
-
-# Verification
-echo -e "\n${BLUE}=======================================================${NC}"
-echo -e "${GREEN}Verification: Testing GPU Detection...${NC}"
-python -c "import torch; import intel_extension_for_pytorch as ipex; print(f'Detected GPU: {torch.xpu.get_device_name(0)}'); print(f'Compute Link: {torch.xpu.is_available()}')"
-
-echo -e "\n${YELLOW}To finish the setup, I will now update your start.sh...${NC}"
-
-# Inject the variables into start.sh if not already there
-if ! grep -q "intel_gpu_vars.sh" start.sh; then
-    sed -i '2i source ./intel_gpu_vars.sh' start.sh
-    echo -e "${GREEN}Updated start.sh to auto-load Intel optimizations.${NC}"
+if ! conda env list | grep -q "^$ENV_NAME "; then
+    echo -e "${RED}Environment '$ENV_NAME' not found.${NC}"
+    echo -e "Please run './install.sh' first."
+    exit 1
 fi
 
-echo -e "${BLUE}=======================================================${NC}"
-echo -e "${GREEN}SETUP COMPLETE!${NC}"
-echo -e "You can now run ${YELLOW}./start.sh${NC} for maximum performance."
-echo -e "${BLUE}=======================================================${NC}"
+conda activate $ENV_NAME
+
+# APPLY VARS DIRECTLY TO CONDA ENV (No external file needed)
+echo -e "${YELLOW}Setting persistent environment variables...${NC}"
+conda env config vars set ONEAPI_DEVICE_SELECTOR=level_zero:0 TORCH_LLM_ALLREDUCE=1
+echo -e "${GREEN}Variables applied. They will load automatically when the environment is activated.${NC}"
+
+# Reload environment to apply changes immediately
+conda deactivate
+conda activate $ENV_NAME
+
+# 3. PyTorch Version Check & Repair
+echo -e "\n${YELLOW}[3/4] Validating PyTorch Installation...${NC}"
+python -c "
+import sys, subprocess, platform
+try:
+    import torch
+    ver = torch.__version__
+    print(f'Current PyTorch: {ver}')
+    
+    needs_repair = False
+    if 'cu' in ver:
+        print('${RED}DETECTED NVIDIA CUDA VERSION ON INTEL HOST.${NC}')
+        needs_repair = True
+    elif '+cpu' in ver:
+        print('${RED}DETECTED CPU-ONLY VERSION.${NC}')
+        needs_repair = True
+    elif not hasattr(torch, 'xpu') or not torch.xpu.is_available():
+        print('${YELLOW}XPU not detected. Reinstalling might fix this.${NC}')
+        needs_repair = True
+    else:
+        print('${GREEN}Correct XPU version detected.${NC}')
+
+    if needs_repair:
+        print('${YELLOW}Initiating Auto-Repair...${NC}')
+        subprocess.check_call([sys.executable, '-m', 'pip', 'uninstall', '-y', 'torch', 'torchvision', 'torchaudio'])
+        print('${YELLOW}Installing PyTorch Nightly (XPU)...${NC}')
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--pre', 'torch', 'torchvision', 'torchaudio', '--index-url', 'https://download.pytorch.org/whl/nightly/xpu'])
+        print('${GREEN}Repair Complete!${NC}')
+except Exception as e:
+    print(f'${RED}Error: {e}${NC}')
+"
+
+# 4. Final Verify
+echo -e "\n${YELLOW}[4/4] Final Verification...${NC}"
+python -c "
+import torch
+try:
+    if hasattr(torch, 'xpu') and torch.xpu.is_available():
+        print(f'${GREEN}SUCCESS! Detected XPU: {torch.xpu.get_device_name(0)}${NC}')
+        print(f'${GREEN}VRAM: {torch.xpu.get_device_properties(0).total_memory / 1024**3:.2f} GB${NC}')
+    else:
+        print(f'${RED}FAILURE: XPU still not detected.${NC}')
+        exit(1)
+except:
+    exit(1)
+"
