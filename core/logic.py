@@ -7,7 +7,6 @@ import math
 import re
 import asyncio
 import sys
-import subprocess
 from glob import glob
 from diffusers import (
     EulerAncestralDiscreteScheduler,
@@ -18,12 +17,9 @@ from diffusers import (
     UniPCMultistepScheduler,
 )
 from pipelines import get_pipeline_for_model
-from pipelines.sdxl_pipeline import SDXLPipeline
 from .prompt_book import prompt_book
 from .metadata_handler import metadata_handler
-from pipelines.sd2_pipeline import SD2Pipeline
-from pipelines.sd3_pipeline import SD3Pipeline
-from pipelines.flux_pipeline import ArtTicFLUXPipeline
+from pyngrok import ngrok
 
 
 class OOMError(Exception):
@@ -38,9 +34,11 @@ app_state = {
     "status_message": "No model loaded.",
     "current_cpu_offload_state": False,
     "current_vae_tiling_state": True,
+    "current_sdnq_state": False,
     "current_model_type": "",
     "default_width": 512,
     "default_height": 512,
+    "public_url": None,
 }
 
 APP_LOGGER_NAME = "arttic_lab"
@@ -61,6 +59,7 @@ def get_app_status():
     return {
         "is_model_loaded": app_state["is_model_loaded"],
         "status_message": app_state["status_message"],
+        "public_url": app_state["public_url"],
     }
 
 
@@ -69,14 +68,14 @@ def get_config():
         "models": get_available_models(),
         "loras": get_available_loras(),
         "schedulers": list(SCHEDULER_MAP.keys()),
-        "gallery_images": [img for img in get_output_images()],
+        "gallery_images": get_output_images(),
         "prompts": prompt_book.get_all_prompts(),
+        "public_url": app_state["public_url"],
     }
 
 
 def get_available_models():
     models_path = os.path.join("./models", "*.safetensors")
-    # Fix: Use splitext to handle filenames with multiple dots correctly
     return sorted([os.path.splitext(os.path.basename(p))[0] for p in glob(models_path)])
 
 
@@ -91,14 +90,13 @@ def get_output_images():
     image_files = []
     for f in sorted(glob(outputs_path), key=os.path.getmtime, reverse=True):
         filename = os.path.basename(f)
-        filepath = os.path.join("./outputs", filename)
-        metadata = metadata_handler.extract_metadata_from_image(filepath)
+        metadata = metadata_handler.extract_metadata_from_image(f)
         image_info = {"filename": filename, "has_metadata": metadata is not None}
         if metadata:
             image_info.update(
                 {
                     "prompt_preview": (
-                        metadata.get("prompt", "")[:50] + "..."
+                        (metadata.get("prompt", "")[:50] + "...")
                         if len(metadata.get("prompt", "")) > 50
                         else metadata.get("prompt", "")
                     ),
@@ -111,17 +109,11 @@ def get_output_images():
 
 
 def get_model_files():
-    models_dir = "./models"
-    os.makedirs(models_dir, exist_ok=True)
-    files = glob(os.path.join(models_dir, "*.safetensors"))
-    return sorted([os.path.basename(f) for f in files])
+    return sorted([os.path.basename(f) for f in glob("./models/*.safetensors")])
 
 
 def get_lora_files():
-    loras_dir = "./loras"
-    os.makedirs(loras_dir, exist_ok=True)
-    files = glob(os.path.join(loras_dir, "*.safetensors"))
-    return sorted([os.path.basename(f) for f in files])
+    return sorted([os.path.basename(f) for f in glob("./loras/*.safetensors")])
 
 
 def delete_model_file(filename):
@@ -130,20 +122,12 @@ def delete_model_file(filename):
     models_dir = os.path.abspath("./models")
     file_path = os.path.abspath(os.path.join(models_dir, filename))
     if os.path.commonpath([file_path, models_dir]) != models_dir:
-        logger.error(
-            f"Attempted to delete file outside of models directory: {filename}"
-        )
-        raise PermissionError("Cannot delete files outside of the models directory.")
-    if not os.path.exists(file_path):
-        logger.warning(f"Attempted to delete non-existent model file: {filename}")
-        return {"status": "not_found", "message": f"File '{filename}' not found."}
-    try:
+        raise PermissionError("Cannot delete files outside of models directory.")
+    if os.path.exists(file_path):
         os.remove(file_path)
-        logger.info(f"Successfully deleted model file: {filename}")
-        return {"status": "success", "message": f"Deleted '{filename}'."}
-    except Exception as e:
-        logger.error(f"Error deleting model file '{filename}': {e}", exc_info=True)
-        raise IOError(f"Could not delete file '{filename}'.")
+        logger.info(f"Deleted model file: {filename}")
+        return {"status": "success", "message": f"Deleted {filename}"}
+    return {"status": "error", "message": "File not found"}
 
 
 def delete_lora_file(filename):
@@ -152,18 +136,12 @@ def delete_lora_file(filename):
     loras_dir = os.path.abspath("./loras")
     file_path = os.path.abspath(os.path.join(loras_dir, filename))
     if os.path.commonpath([file_path, loras_dir]) != loras_dir:
-        logger.error(f"Attempted to delete file outside of loras directory: {filename}")
-        raise PermissionError("Cannot delete files outside of the loras directory.")
-    if not os.path.exists(file_path):
-        logger.warning(f"Attempted to delete non-existent lora file: {filename}")
-        return {"status": "not_found", "message": f"File '{filename}' not found."}
-    try:
+        raise PermissionError("Cannot delete files outside of loras directory.")
+    if os.path.exists(file_path):
         os.remove(file_path)
-        logger.info(f"Successfully deleted lora file: {filename}")
-        return {"status": "success", "message": f"Deleted '{filename}'."}
-    except Exception as e:
-        logger.error(f"Error deleting lora file '{filename}': {e}", exc_info=True)
-        raise IOError(f"Could not delete file '{filename}'.")
+        logger.info(f"Deleted LoRA file: {filename}")
+        return {"status": "success", "message": f"Deleted {filename}"}
+    return {"status": "error", "message": "File not found"}
 
 
 def _get_next_image_number():
@@ -187,31 +165,22 @@ def delete_image(filename):
     outputs_dir = os.path.abspath("./outputs")
     file_path = os.path.abspath(os.path.join(outputs_dir, filename))
     if os.path.commonpath([file_path, outputs_dir]) != outputs_dir:
-        logger.error(
-            f"Attempted to delete file outside of outputs directory: {filename}"
-        )
-        raise PermissionError("Cannot delete files outside of the outputs directory.")
-    if not os.path.exists(file_path):
-        logger.warning(f"Attempted to delete non-existent file: {filename}")
-        return {"status": "not_found", "message": f"File '{filename}' not found."}
-    try:
+        raise PermissionError("Cannot delete files outside of outputs directory.")
+    if os.path.exists(file_path):
         os.remove(file_path)
-        logger.info(f"Successfully deleted image: {filename}")
-        return {"status": "success", "message": f"Deleted '{filename}'."}
-    except Exception as e:
-        logger.error(f"Error deleting file '{filename}': {e}", exc_info=True)
-        raise IOError(f"Could not delete file '{filename}'.")
+        logger.info(f"Deleted output image: {filename}")
+        return {"status": "success", "message": f"Deleted {filename}"}
+    return {"status": "error", "message": "File not found"}
 
 
 def unload_model():
     if not app_state["is_model_loaded"]:
-        logger.info("Unload command received, but no model is currently loaded.")
         return {"status_message": "No model loaded."}
-    logger.info(f"Unloading model '{app_state['current_model_name']}' from VRAM...")
-    pipe_to_delete = app_state["current_pipe"]
-    if hasattr(pipe_to_delete, "pipe"):
-        del pipe_to_delete.pipe
-    del pipe_to_delete
+
+    logger.info("Unloading current model and clearing VRAM...")
+    if app_state["current_pipe"]:
+        del app_state["current_pipe"]
+
     app_state.update(
         {
             "current_pipe": None,
@@ -219,35 +188,37 @@ def unload_model():
             "current_lora_name": "",
             "is_model_loaded": False,
             "status_message": "No model loaded.",
+            "current_model_type": "",
+            "current_sdnq_state": False,
             "current_cpu_offload_state": False,
             "current_vae_tiling_state": True,
-            "current_model_type": "",
             "default_width": 512,
             "default_height": 512,
         }
     )
+
     if hasattr(torch, "xpu") and torch.xpu.is_available():
         torch.xpu.empty_cache()
     elif torch.cuda.is_available():
         torch.cuda.empty_cache()
-    logger.info("Model unloaded and VRAM cache cleared.")
+
+    logger.info("Unload complete.")
     return {"status_message": app_state["status_message"]}
 
 
 def _calculate_max_resolution(model_type):
+    GB = 1024**3
+    free_mem = 0
     if hasattr(torch, "xpu") and torch.xpu.is_available():
-        GB = 1024**3
-        total_mem = torch.xpu.get_device_properties(0).total_memory / GB
-        reserved_mem = torch.xpu.memory_reserved(0) / GB
-        free_mem = total_mem - reserved_mem
+        props = torch.xpu.get_device_properties(0)
+        free_mem = (props.total_memory - torch.xpu.memory_reserved(0)) / GB
     elif torch.cuda.is_available():
-        GB = 1024**3
-        total_mem = torch.cuda.get_device_properties(0).total_memory / GB
-        reserved_mem = torch.cuda.memory_reserved(0) / GB
-        free_mem = total_mem - reserved_mem
+        props = torch.cuda.get_device_properties(0)
+        free_mem = (props.total_memory - torch.cuda.memory_reserved(0)) / GB
     else:
         return 1024
-    vram_per_megapixel = {
+
+    vram_per_mp = {
         "SD 1.5": 0.9,
         "SD 2.x": 1.2,
         "SDXL": 2.5,
@@ -255,18 +226,16 @@ def _calculate_max_resolution(model_type):
         "FLUX Dev": 3.2,
         "FLUX Schnell": 2.8,
     }.get(model_type, 1.5)
-    base_res_mp = {
-        "SD 1.5": 0.26,
-        "SD 2.x": 0.59,
-    }.get(model_type, 1.05)
+
+    base_res_mp = 0.26 if model_type == "SD 1.5" else 1.05
+    effective_mem = max(0, free_mem - 0.5)
+
     try:
-        effective_free_mem = max(0, free_mem - 0.25)
-        max_additional_mp = effective_free_mem / vram_per_megapixel
-        total_mp = base_res_mp + max_additional_mp
-        side_length = math.sqrt(total_mp * 1024 * 1024)
-        max_res = int(side_length // 64 * 64)
-        return max(512, min(4096, max_res))
-    except Exception:
+        max_add_mp = effective_mem / vram_per_mp
+        total_mp = base_res_mp + max_add_mp
+        side = math.sqrt(total_mp * 1024 * 1024)
+        return max(512, min(4096, int(side // 64 * 64)))
+    except:
         return 1024
 
 
@@ -275,132 +244,86 @@ def load_model(
     scheduler_name,
     vae_tiling,
     cpu_offload,
+    sdnq_enabled,
     lora_name,
     progress_callback=None,
     loop=None,
 ):
-    if not model_name:
-        raise ValueError("Please select a model from the dropdown.")
-    lora_name = lora_name if lora_name != "None" else ""
-    if (
-        app_state["is_model_loaded"]
-        and app_state["current_model_name"] == model_name
-        and app_state["current_lora_name"] == lora_name
-        and app_state["current_cpu_offload_state"] == cpu_offload
-        and app_state["current_vae_tiling_state"] == vae_tiling
-    ):
-        logger.info(
-            f"Model '{model_name}' with the same configuration is already loaded. Skipping."
-        )
-        max_res_vram = _calculate_max_resolution(app_state["current_model_type"])
-        return {
-            "status_message": app_state["status_message"],
-            "model_type": app_state["current_model_type"],
-            "width": app_state["default_width"],
-            "height": app_state["default_height"],
-            "max_res_vram": max_res_vram,
-            "max_res_offload": 2048,
-        }
-
-    def update_progress(progress, desc):
+    def update_progress(p, d):
         if progress_callback and loop:
-            asyncio.run_coroutine_threadsafe(progress_callback(progress, desc), loop)
+            asyncio.run_coroutine_threadsafe(progress_callback(p, d), loop)
 
     try:
-        if app_state["is_model_loaded"]:
-            unload_model()
-        logger.info(f"Loading model: {model_name}...")
-        update_progress(0, f"Getting pipeline for {model_name}...")
-        pipe = get_pipeline_for_model(model_name)
-        pipe.load_pipeline(update_progress)
-        pipe.place_on_device(use_cpu_offload=cpu_offload)
-        if lora_name:
+        unload_model()
+        logger.info(f"Starting load sequence for: {model_name}")
+        update_progress(0.1, f"Loading {model_name}...")
+
+        pipe_obj = get_pipeline_for_model(model_name)
+        pipe_obj.load_pipeline(update_progress, use_quantization=sdnq_enabled)
+
+        if scheduler_name in SCHEDULER_MAP and hasattr(pipe_obj.pipe, "scheduler"):
+            logger.info(f"Setting scheduler to {scheduler_name}")
+            pipe_obj.pipe.scheduler = SCHEDULER_MAP[scheduler_name].from_config(
+                pipe_obj.pipe.scheduler.config
+            )
+
+        pipe_obj.place_on_device(use_cpu_offload=cpu_offload)
+
+        if vae_tiling and hasattr(pipe_obj.pipe, "vae"):
+            logger.info("Enabling VAE Tiling/Slicing.")
+            pipe_obj.pipe.vae.enable_tiling()
+            pipe_obj.pipe.vae.enable_slicing()
+
+        if lora_name and lora_name != "None":
             lora_path = os.path.join("./loras", f"{lora_name}.safetensors")
             if os.path.exists(lora_path):
                 logger.info(f"Loading LoRA: {lora_name}")
-                update_progress(0.7, f"Loading LoRA: {lora_name}")
-                pipe.pipe.load_lora_weights(lora_path)
+                pipe_obj.pipe.load_lora_weights(lora_path)
                 app_state["current_lora_name"] = lora_name
-            else:
-                logger.warning(f"LoRA file not found: {lora_path}. Skipping.")
-                app_state["current_lora_name"] = ""
-        else:
-            app_state["current_lora_name"] = ""
-        pipe.optimize_with_ipex(update_progress)
-        if not isinstance(pipe, (SD3Pipeline, ArtTicFLUXPipeline)):
-            logger.info(f"Setting scheduler to: {scheduler_name}")
-            SchedulerClass = SCHEDULER_MAP[scheduler_name]
-            pipe.pipe.scheduler = SchedulerClass.from_config(pipe.pipe.scheduler.config)
-        # FIX: Updated to use direct VAE methods to resolve FutureWarnings
-        if not isinstance(pipe, ArtTicFLUXPipeline):
-            if vae_tiling:
-                logger.info("Enabling VAE Slicing & Tiling.")
-                pipe.pipe.vae.enable_slicing()
-                pipe.pipe.vae.enable_tiling()
-            else:
-                logger.info("Disabling VAE Slicing & Tiling.")
-                pipe.pipe.vae.disable_slicing()
-                pipe.pipe.vae.disable_tiling()
-        else:
-            logger.info("VAE Tiling is not applicable for FLUX models.")
-        app_state["current_vae_tiling_state"] = vae_tiling
-        app_state["current_pipe"] = pipe
-        app_state["current_model_name"] = model_name
-        app_state["current_cpu_offload_state"] = cpu_offload
-        if isinstance(pipe, ArtTicFLUXPipeline):
-            model_type = "FLUX Schnell" if pipe.is_schnell else "FLUX Dev"
-            default_res = 1024
-        elif isinstance(pipe, SD3Pipeline):
+
+        # Determine defaults based on class
+        model_type = "SDXL"  # Fallback
+        if "FLUX" in pipe_obj.__class__.__name__:
+            model_type = "FLUX Schnell" if pipe_obj.is_schnell else "FLUX Dev"
+        elif "SD3" in pipe_obj.__class__.__name__:
             model_type = "SD3"
-            default_res = 1024
-        elif isinstance(pipe, SDXLPipeline):
-            model_type = "SDXL"
-            default_res = 1024
-        elif isinstance(pipe, SD2Pipeline):
+        elif "SD2" in pipe_obj.__class__.__name__:
             model_type = "SD 2.x"
-            default_res = 768
-        else:
+        elif "SD15" in pipe_obj.__class__.__name__:
             model_type = "SD 1.5"
-            default_res = 512
-        status_suffix = "(CPU Offload)" if cpu_offload else ""
-        lora_suffix = (
-            f" + {app_state['current_lora_name']}"
-            if app_state["current_lora_name"]
-            else ""
+
+        default_res = (
+            512 if model_type == "SD 1.5" else 1024 if model_type != "SD 2.x" else 768
         )
-        status_message = (
-            f"Ready: {model_name} ({model_type}){lora_suffix} {status_suffix}"
-        )
+
         app_state.update(
             {
-                "status_message": status_message,
+                "current_pipe": pipe_obj,
+                "current_model_name": model_name,
                 "is_model_loaded": True,
+                "status_message": f"Ready: {model_name} ({model_type})",
                 "current_model_type": model_type,
+                "current_vae_tiling_state": vae_tiling,
+                "current_cpu_offload_state": cpu_offload,
+                "current_sdnq_state": sdnq_enabled,
                 "default_width": default_res,
                 "default_height": default_res,
             }
         )
-        logger.info(
-            f"Model '{model_name}' is ready! Type: {model_type} {status_suffix}."
-        )
-        update_progress(1, "Model Ready!")
-        max_res_vram = _calculate_max_resolution(model_type)
+
+        logger.info(f"Load complete. Model Ready.")
+        update_progress(1.0, "Model Ready")
         return {
-            "status_message": status_message,
-            "model_type": model_type,
+            "status_message": app_state["status_message"],
+            "max_res_vram": _calculate_max_resolution(model_type),
             "width": default_res,
             "height": default_res,
-            "max_res_vram": max_res_vram,
-            "max_res_offload": 2048,
+            "model_type": model_type,
         }
     except Exception as e:
-        logger.error(
-            f"Failed to load model '{model_name}'. Full error: {e}", exc_info=True
-        )
+        logger.error(f"Failed to load: {e}")
         unload_model()
-        raise RuntimeError(
-            f"Failed to load model '{model_name}'. Check logs for details."
-        )
+        raise
 
 
 def generate_image(
@@ -412,32 +335,20 @@ def generate_image(
     width,
     height,
     lora_weight,
-    init_image=None,
-    strength=0.75,
     progress_callback=None,
     loop=None,
+    **kwargs,
 ):
     if not app_state["is_model_loaded"]:
-        raise ConnectionAbortedError("Cannot generate, no model is loaded.")
-    if init_image:
-        logger.info(f"Img2Img request received (Strength: {strength}).")
-        # Implementation for img2img would go here if pipelines support it
-    logger.info("Starting image generation...")
-    start_time = time.time()
-    seed = int(seed if seed is not None else random.randint(0, 2**32 - 1))
-    if hasattr(torch, "xpu") and torch.xpu.is_available():
-        generator = torch.Generator("xpu").manual_seed(seed)
-    elif torch.cuda.is_available():
-        generator = torch.Generator("cuda").manual_seed(seed)
-    else:
-        generator = torch.Generator("cpu").manual_seed(seed)
+        raise RuntimeError("No model loaded.")
 
-    def pipeline_progress_callback(pipe, step, timestep, callback_kwargs):
-        progress = step / int(steps)
+    seed = int(seed if seed >= 0 else random.randint(0, 2**32 - 1))
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+
+    def pipe_cb(pipe, step, timestep, callback_kwargs):
         if progress_callback and loop:
             asyncio.run_coroutine_threadsafe(
-                progress_callback(progress, f"Sampling... {step + 1}/{int(steps)}"),
-                loop,
+                progress_callback(step / steps, f"Sampling {step}/{steps}"), loop
             )
         return callback_kwargs
 
@@ -448,95 +359,111 @@ def generate_image(
         "width": int(width),
         "height": int(height),
         "generator": generator,
-        "callback_on_step_end": pipeline_progress_callback,
+        "callback_on_step_end": pipe_cb,
     }
+
     if app_state["current_lora_name"] and float(lora_weight) > 0:
         gen_kwargs["cross_attention_kwargs"] = {"scale": float(lora_weight)}
-        logger.info(
-            f"Applying LoRA '{app_state['current_lora_name']}' with weight {lora_weight}"
-        )
-    if negative_prompt and negative_prompt.strip():
+
+    if negative_prompt:
         gen_kwargs["negative_prompt"] = negative_prompt
+
+    logger.info(
+        f"Generating image. Seed: {seed}, Size: {width}x{height}, Steps: {steps}"
+    )
+
     try:
-        image = app_state["current_pipe"].generate(**gen_kwargs).images[0]
-    except torch.OutOfMemoryError as e:
+        start_time = time.time()
+        result = app_state["current_pipe"].generate(**gen_kwargs)
+        image = result.images[0]
+
+        duration = time.time() - start_time
+        logger.info(f"Generation finished in {duration:.2f}s")
+
+        filename = f"ArtTic-LAB_{_get_next_image_number()}.png"
+        filepath = os.path.join("./outputs", filename)
+        image.save(filepath)
+
+        meta = metadata_handler.create_metadata(
+            prompt,
+            negative_prompt,
+            app_state["current_model_name"],
+            seed,
+            width,
+            height,
+            steps,
+            guidance,
+            lora_info=(
+                {"name": app_state["current_lora_name"], "weight": lora_weight}
+                if app_state["current_lora_name"]
+                else None
+            ),
+        )
+        metadata_handler.embed_metadata_to_image(filepath, meta)
+
+        return {"image_filename": filename, "info": f"Seed: {seed}"}
+    except torch.OutOfMemoryError:
         if hasattr(torch, "xpu") and torch.xpu.is_available():
             torch.xpu.empty_cache()
-        elif torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        logger.error(f"Out of Memory during generation: {e}")
-        raise OOMError(
-            "Your device ran out of memory while generating the image. Try reducing the resolution or steps."
-        )
-    generation_time = time.time() - start_time
-    logger.info(f"Generation completed in {generation_time:.2f} seconds.")
-    os.makedirs("./outputs", exist_ok=True)
-    filename = f"ArtTic-LAB_{_get_next_image_number()}.png"
-    filepath = os.path.join("./outputs", filename)
-    image.save(filepath)
-    lora_info = None
-    if app_state["current_lora_name"]:
-        lora_info = {"name": app_state["current_lora_name"], "weight": lora_weight}
-    metadata = metadata_handler.create_metadata(
-        prompt=prompt,
-        negative_prompt=negative_prompt,
-        model_name=app_state["current_model_name"],
-        seed=seed,
-        width=width,
-        height=height,
-        steps=steps,
-        cfg_scale=guidance,
-        lora_info=lora_info,
-    )
-    metadata_handler.embed_metadata_to_image(filepath, metadata)
-    info_text = f"Generated in {generation_time:.2f}s on '{app_state['current_model_name']}' with seed {seed}."
-    if app_state["current_lora_name"]:
-        info_text += f" LoRA: {app_state['current_lora_name']} @ {lora_weight}."
-    return {"image_filename": filename, "info": info_text}
+        logger.error("OOM Error: VRAM exhausted.")
+        raise OOMError("VRAM exhausted.")
+
+
+def toggle_share():
+    if app_state["public_url"]:
+        logger.info("Disconnecting public share...")
+        ngrok.disconnect(app_state["public_url"])
+        app_state["public_url"] = None
+        return {"status": "disconnected", "url": None}
+    else:
+        try:
+            logger.info("Connecting Ngrok tunnel...")
+            url = ngrok.connect(7860).public_url
+            app_state["public_url"] = url
+            logger.info(f"Public URL established: {url}")
+            return {"status": "connected", "url": url}
+        except Exception as e:
+            logger.error(f"Ngrok connection failed: {e}")
+            return {"status": "error", "message": str(e)}
 
 
 def get_prompts():
     return prompt_book.get_all_prompts()
 
 
-def add_prompt(title: str, prompt: str, negative_prompt: str = ""):
-    success = prompt_book.add_prompt(title, prompt, negative_prompt)
-    return {"success": success}
+def add_prompt(t, p, np=""):
+    return {"success": prompt_book.add_prompt(t, p, np)}
 
 
-def update_prompt(old_title: str, new_title: str, prompt: str, negative_prompt: str):
-    success = prompt_book.update_prompt(old_title, new_title, prompt, negative_prompt)
-    return {"success": success}
+def update_prompt(ot, nt, p, np):
+    return {"success": prompt_book.update_prompt(ot, nt, p, np)}
 
 
-def delete_prompt(title: str):
-    success = prompt_book.delete_prompt(title)
-    return {"success": success}
+def delete_prompt(t):
+    return {"success": prompt_book.delete_prompt(t)}
 
 
-def get_image_metadata(filename: str):
-    filepath = os.path.join("./outputs", filename)
-    if not os.path.exists(filepath):
-        return {"error": "File not found"}
-    metadata = metadata_handler.extract_metadata_from_image(filepath)
-    if metadata:
-        return {"success": True, "metadata": metadata}
-    else:
-        return {"success": False, "error": "No metadata found"}
+def get_image_metadata(filename):
+    path = os.path.join("./outputs", filename)
+    if not os.path.exists(path):
+        return {"success": False, "error": "File not found"}
+    m = metadata_handler.extract_metadata_from_image(path)
+    return (
+        {"success": True, "metadata": m}
+        if m
+        else {"success": False, "error": "No metadata"}
+    )
 
 
 def restart_backend():
-    logger.info("Restart command received. Exiting with restart code...")
+    logger.info("Restart command initiated.")
     sys.exit(RESTART_EXIT_CODE)
 
 
 def clear_cache():
-    try:
-        if hasattr(torch, "xpu") and torch.xpu.is_available():
-            torch.xpu.empty_cache()
-            torch.xpu.synchronize()
-        logger.info("VRAM cache cleared.")
-        return {"status": "success", "message": "VRAM cache cleared"}
-    except Exception as e:
-        logger.error(f"Error clearing cache: {e}")
-        return {"status": "error", "message": str(e)}
+    logger.info("Clearing VRAM cache...")
+    if hasattr(torch, "xpu") and torch.xpu.is_available():
+        torch.xpu.empty_cache()
+    elif torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    return {"status": "success"}

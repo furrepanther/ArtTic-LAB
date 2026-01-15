@@ -38,6 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
       height: 512,
       vae_tiling: true,
       cpu_offload: false,
+      sdnq_enabled: false,
       init_image: null,
       strength: 0.75,
     },
@@ -103,6 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
     },
     notificationContainer: document.getElementById('notification-container'),
     themeToggle: document.getElementById('theme-toggle-btn'),
+    shareBtn: document.getElementById('share-btn'),
     node: {
       canvas: document.getElementById('node-canvas'),
       connectorSvg: document.getElementById('node-connector-svg'),
@@ -144,6 +146,9 @@ document.addEventListener('DOMContentLoaded', () => {
         .then((status) => {
           state.isModelLoaded = status.is_model_loaded;
           updateLoadUnloadButton();
+          if (status.public_url) {
+            ui.shareBtn.classList.add('active');
+          }
           if (state.isModelLoaded) {
             updateNodeUI('model_sampler', {
               status: status.status_message,
@@ -263,6 +268,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         showNotification('File lists updated', 'info', 2000);
       },
+      share_toggled: (data) => {
+        if (data.status === 'connected') {
+          showDialog(
+            'Public Link Active',
+            `Your app is accessible at:<br><a href="${data.url}" target="_blank">${data.url}</a>`,
+            [{ text: 'Close' }]
+          );
+          ui.shareBtn.classList.add('active');
+        } else if (data.status === 'disconnected') {
+          showNotification('Public link disabled.', 'info');
+          ui.shareBtn.classList.remove('active');
+        } else {
+          showNotification(`Share Error: ${data.message}`, 'error');
+        }
+      },
       error: (data) => {
         showNotification(data.message, 'error', 5000);
         clearNotification(progressId);
@@ -272,9 +292,9 @@ document.addEventListener('DOMContentLoaded', () => {
       cache_cleared: () =>
         showNotification('VRAM cache has been cleared.', 'success', 3000),
     };
-    (handlers[type] || (() => console.warn(`Unhandled message type: ${type}`)))(
-      data
-    );
+    if (handlers[type]) handlers[type](data);
+    else if (type.includes('deleted'))
+      showNotification(data.message, data.status);
   }
 
   function updateConnectionStatus(text, statusClass) {
@@ -347,16 +367,19 @@ document.addEventListener('DOMContentLoaded', () => {
   function updateLoadUnloadButton() {
     const btn = ui.node.loadModelBtn;
     const generateBtn = ui.node.generateBtn;
+    const sdnqBtn = document.getElementById('sdnq-toggle-btn');
     if (state.isModelLoaded) {
       btn.innerHTML = `<span class="material-symbols-outlined">cancel</span> Unload Model`;
       btn.classList.remove('btn-primary');
       btn.classList.add('btn-danger');
       generateBtn.disabled = false;
+      if (sdnqBtn) sdnqBtn.disabled = true;
     } else {
       btn.innerHTML = `<span class="material-symbols-outlined">download</span> Load Model`;
       btn.classList.add('btn-primary');
       btn.classList.remove('btn-danger');
       generateBtn.disabled = true;
+      if (sdnqBtn) sdnqBtn.disabled = false;
     }
   }
 
@@ -597,7 +620,17 @@ document.addEventListener('DOMContentLoaded', () => {
     switch (type) {
       case 'model_sampler':
         header = `<h3 class="node-title">Model & Sampler</h3>`;
-        content = `<div class="node-content"><div class="control-group"><label>Model</label><div class="custom-dropdown" data-key="model_name"><div class="dropdown-selected">Select a model</div></div></div><div class="control-group"><label>Sampler</label><div class="custom-dropdown" data-key="scheduler_name"><div class="dropdown-selected">Euler A</div></div></div><div id="model-status" class="max-res-info">No model loaded.</div></div>`;
+        content = `<div class="node-content">
+                    <div class="control-group"><label>Model</label><div class="custom-dropdown" data-key="model_name"><div class="dropdown-selected">Select a model</div></div></div>
+                    <div class="control-group"><label>Sampler</label><div class="custom-dropdown" data-key="scheduler_name"><div class="dropdown-selected">Euler A</div></div></div>
+                    <div class="control-group">
+                        <div class="sdnq-wrapper">
+                            <label>Quantization (SDNQ)</label>
+                            <button id="sdnq-toggle-btn" class="icon-btn" title="Enable SDNQ for Low VRAM"><span class="material-symbols-outlined">check_box_outline_blank</span></button>
+                        </div>
+                    </div>
+                    <div id="model-status" class="max-res-info">No model loaded.</div>
+                   </div>`;
         break;
       case 'parameters':
         header = `<h3 class="node-title">Parameters & Dimensions</h3>`;
@@ -620,10 +653,6 @@ document.addEventListener('DOMContentLoaded', () => {
         header = `<h3 class="node-title">Input Image</h3>`;
         content = `
         <div class="node-content">
-            <div class="input-image-warning" style="color: var(--warning-color, #f59e0b); font-size: 0.85em; margin-bottom: 8px; padding: 4px; border: 1px solid var(--warning-color, #f59e0b); border-radius: 4px; background: rgba(245, 158, 11, 0.1);">
-                <span class="material-symbols-outlined" style="font-size: 1.2em; vertical-align: bottom;">warning</span>
-                Unstable: Not tested due to lack of VRAM.
-            </div>
             <div class="input-image-dropzone" id="input-image-dropzone">
                 <span class="material-symbols-outlined">add_photo_alternate</span>
                 <p>Drag & Drop or Click</p>
@@ -723,6 +752,25 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       setTimeout(autoResize, 0);
     });
+
+    if (type === 'model_sampler') {
+      const sdnqBtn = node.querySelector('#sdnq-toggle-btn');
+      if (sdnqBtn) {
+        sdnqBtn.addEventListener('click', () => {
+          if (sdnqBtn.disabled) return;
+          state.generationState.sdnq_enabled =
+            !state.generationState.sdnq_enabled;
+          sdnqBtn.querySelector('span').textContent = state.generationState
+            .sdnq_enabled
+            ? 'check_box'
+            : 'check_box_outline_blank';
+          sdnqBtn.classList.toggle(
+            'active',
+            state.generationState.sdnq_enabled
+          );
+        });
+      }
+    }
 
     if (type === 'parameters') {
       node.querySelector('#random-seed').addEventListener('click', () => {
@@ -934,8 +982,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (state.isModelLoaded) {
         sendMessage('unload_model');
       } else {
-        const { model_name, scheduler_name, vae_tiling, cpu_offload } =
-          state.generationState;
+        const {
+          model_name,
+          scheduler_name,
+          vae_tiling,
+          cpu_offload,
+          sdnq_enabled,
+        } = state.generationState;
         if (!model_name || model_name === 'Select a model') {
           showNotification('Please select a model first.', 'error', 3000);
           return;
@@ -945,6 +998,7 @@ document.addEventListener('DOMContentLoaded', () => {
           scheduler_name,
           vae_tiling,
           cpu_offload,
+          sdnq_enabled,
           lora_name: state.generationState.lora_name,
         });
       }
@@ -1118,6 +1172,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function setupEventListeners() {
     ui.themeToggle.addEventListener('click', toggleTheme);
+    ui.shareBtn.addEventListener('click', () => sendMessage('toggle_share'));
     ui.restartBtn.addEventListener('click', () =>
       sendMessage('restart_backend')
     );
@@ -1242,7 +1297,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const nodeSpacing = 40;
       const nodeWidth = 320;
-      let currentX = 0;
+      let currentX = 50;
+
+      // Adjust initial positions for responsiveness
+      if (window.innerWidth < 1200) {
+        currentX = 20;
+      }
 
       createNode('model_sampler', currentX, 150);
       currentX += nodeWidth + nodeSpacing;

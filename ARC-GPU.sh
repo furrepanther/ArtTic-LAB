@@ -1,71 +1,107 @@
 #!/bin/bash
 
-# Color codes for clean output
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 echo -e "${BLUE}=======================================================${NC}"
-echo -e "${BLUE}     Intel ARC GPU - Linux Performance Optimizer       ${NC}"
+echo -e "${BLUE}     Intel ARC GPU - Native XPU Setup & Repair        ${NC}"
 echo -e "${BLUE}=======================================================${NC}"
 
-# 1. System Driver Installation
-echo -e "\n${YELLOW}[1/4] Installing System Drivers & Compute Runtimes...${NC}"
-sudo pacman -Sy --needed \
-    intel-compute-runtime \
-    level-zero-loader \
-    level-zero-headers \
-    intel-media-driver \
-    vulkan-intel \
-    libvpl-intel-gpu \
-    clinfo \
-    intel-gpu-tools --noconfirm
+echo -e "\n${YELLOW}[1/3] Verifying System Runtimes...${NC}"
 
-# 2. Python Environment Setup
-echo -e "\n${YELLOW}[2/4] Configuring Python Environment...${NC}"
-ENV_NAME="ArtTic-LAB"
+if command -v pacman &> /dev/null; then
+    echo -e "Detected Package Manager: ${GREEN}Pacman (Arch/Manjaro)${NC}"
+    sudo pacman -Sy --needed intel-compute-runtime level-zero-loader level-zero-headers \
+    intel-media-driver vulkan-intel onevpl-intel-gpu clinfo intel-gpu-tools --noconfirm
 
-# Find Conda
-if command -v conda &> /dev/null; then
-    eval "$(conda shell.bash hook)"
-    conda activate $ENV_NAME
+elif command -v dnf &> /dev/null; then
+    echo -e "Detected Package Manager: ${GREEN}DNF (Fedora/RHEL)${NC}"
+    sudo dnf install -y intel-compute-runtime intel-media-driver level-zero \
+    intel-gpu-tools clinfo igt-gpu-tools
+
+elif command -v apt &> /dev/null; then
+    echo -e "Detected Package Manager: ${GREEN}APT (Ubuntu/Debian)${NC}"
+    sudo apt update
+    sudo apt install -y intel-opencl-icd intel-level-zero-gpu level-zero \
+    intel-media-va-driver-non-free libmfx1 libmfxgen1 libvpl2 \
+    clinfo intel-gpu-tools
+
+elif command -v zypper &> /dev/null; then
+    echo -e "Detected Package Manager: ${GREEN}Zypper (OpenSUSE)${NC}"
+    sudo zypper refresh
+    sudo zypper install -y intel-opencl level-zero intel-media-driver \
+    clinfo intel-gpu-tools
+
 else
-    echo -e "${RED}Error: Conda not found. Please install Miniconda/Miniforge first.${NC}"
+    echo -e "${RED}Error: Unsupported Package Manager. Please install Intel Compute Runtime & Level Zero manually.${NC}"
     exit 1
 fi
 
-echo -e "${GREEN}Activating $ENV_NAME...${NC}"
+ENV_NAME="ArtTic-LAB"
 
-# 3. Performance Tuning
-echo -e "\n${YELLOW}[4/4] Applying Performance Environment Variables...${NC}"
-
-# We will create a local 'env_vars' file that start.sh can source
-cat << EOF > intel_gpu_vars.sh
-# Intel GPU Performance Tweaks
-export ONEAPI_DEVICE_SELECTOR=level_zero:0
-export IPEX_XPU_ONEDNN_LAYOUT=1
-export IPEX_FORCE_ATTENTION_TYPE=SDP
-export TORCH_LLM_ALLREDUCE=1
-EOF
-
-echo -e "${GREEN}Environment variables generated in 'intel_gpu_vars.sh'${NC}"
-
-# Verification
-echo -e "\n${BLUE}=======================================================${NC}"
-echo -e "${GREEN}Verification: Testing GPU Detection...${NC}"
-python -c "import torch; import intel_extension_for_pytorch as ipex; print(f'Detected GPU: {torch.xpu.get_device_name(0)}'); print(f'Compute Link: {torch.xpu.is_available()}')"
-
-echo -e "\n${YELLOW}To finish the setup, I will now update your start.sh...${NC}"
-
-# Inject the variables into start.sh if not already there
-if ! grep -q "intel_gpu_vars.sh" start.sh; then
-    sed -i '2i source ./intel_gpu_vars.sh' start.sh
-    echo -e "${GREEN}Updated start.sh to auto-load Intel optimizations.${NC}"
+if ! command -v conda &> /dev/null; then
+    echo -e "${RED}Error: Conda not found. Please install Miniconda or Anaconda.${NC}"
+    exit 1
 fi
 
-echo -e "${BLUE}=======================================================${NC}"
-echo -e "${GREEN}SETUP COMPLETE!${NC}"
-echo -e "You can now run ${YELLOW}./start.sh${NC} for maximum performance."
-echo -e "${BLUE}=======================================================${NC}"
+eval "$(conda shell.bash hook)"
+
+if ! conda info --envs | grep -q "$ENV_NAME"; then
+    echo -e "${YELLOW}Environment '$ENV_NAME' not found. Creating it...${NC}"
+    conda create -n $ENV_NAME python=3.10 -y
+fi
+
+conda activate $ENV_NAME
+echo -e "Active Environment: ${GREEN}$CONDA_DEFAULT_ENV${NC}"
+
+echo -e "\n${YELLOW}[2/3] Validating Native XPU Environment...${NC}"
+
+python -c "
+import torch
+import sys
+try:
+    # Check 1: Does the module exist?
+    if not hasattr(torch, 'xpu'):
+        print('${RED}FAIL: PyTorch installed, but 'torch.xpu' is missing.${NC}')
+        sys.exit(1)
+    
+    # Check 2: Is the hardware visible?
+    if not torch.xpu.is_available():
+        print('${YELLOW}FAIL: torch.xpu exists, but device is not available (Driver/Kernel issue).${NC}')
+        sys.exit(1)
+        
+    print(f'${GREEN}Native XPU Detected: {torch.xpu.get_device_name(0)}${NC}')
+    sys.exit(0) # Success
+
+except Exception as e:
+    print(f'${RED}Validation Error: {e}${NC}')
+    sys.exit(1)
+"
+
+PYTHON_EXIT_CODE=$?
+
+if [ $PYTHON_EXIT_CODE -ne 0 ]; then
+    echo -e "${YELLOW}Initiating Native XPU Reinstall...${NC}"
+    
+    pip uninstall -y torch torchvision torchaudio
+    
+    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+fi
+
+echo -e "\n${YELLOW}[3/3] Final Hardware Check...${NC}"
+python -c "
+import torch
+try:
+    if torch.xpu.is_available():
+        props = torch.xpu.get_device_properties(0)
+        print(f'${GREEN}SUCCESS: {props.name}${NC}')
+        print(f'${GREEN}VRAM: {props.total_memory / 1024**3:.2f} GB${NC}')
+        print(f'${GREEN}Driver: Native PyTorch XPU${NC}')
+    else:
+        print('${RED}FAILURE: XPU still not accessible after repair.${NC}')
+except Exception as e:
+    print(f'${RED}Error during final check: {e}${NC}')
+"
