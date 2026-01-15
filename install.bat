@@ -45,7 +45,7 @@ if "%hw_choice%"=="1" (
 )
 
 echo [INFO] Installing Application Dependencies...
-pip install diffusers transformers accelerate safetensors fastapi "uvicorn[standard]" jinja2 toml pyngrok pillow numpy sdnq psutil
+pip install -r requirements.txt
 
 echo =======================================================
 echo [SUCCESS] Installation complete!

@@ -1,85 +1,77 @@
-#!/bin/bash
-set -e
-ENV_NAME="ArtTic-LAB"
-PYTHON_VERSION="3.11"
+$ErrorActionPreference = "Stop"
 
-find_conda() {
-    if command -v conda &> /dev/null; then
-        eval "$(conda shell.bash hook)"
-        return 0
-    fi
-    declare -a conda_paths=("$HOME/miniconda3" "$HOME/anaconda3" "$HOME/miniforge3" "/opt/miniconda3" "/opt/anaconda3" "/opt/miniforge3")
-    for path in "${conda_paths[@]}"; do
-        if [ -f "$path/bin/conda" ]; then
-            eval "$($path/bin/conda shell.bash hook)"
-            return 0
-        fi
-    done
-    return 1
+$ENV_NAME = "ArtTic-LAB"
+$PYTHON_VERSION = "3.11"
+
+Write-Host "=======================================================" -ForegroundColor Cyan
+Write-Host "           ArtTic-LAB Installer (PowerShell)           " -ForegroundColor Cyan
+Write-Host "=======================================================" -ForegroundColor Cyan
+Write-Host ""
+
+# 1. Check for Conda
+if (-not (Get-Command conda -ErrorAction SilentlyContinue)) {
+    Write-Host "[ERROR] Conda not found in PATH." -ForegroundColor Red
+    Write-Host "Please install Miniconda or Anaconda and add it to your PATH." -ForegroundColor Gray
+    exit 1
 }
 
-clear
-echo "======================================================="
-echo "            ArtTic-LAB Installer (Multi-GPU)"
-echo "======================================================="
+# 2. Create Environment
+$envExists = conda env list | Select-String -Pattern "^$ENV_NAME\s"
+if ($envExists) {
+    Write-Host "[INFO] Updating existing environment '$ENV_NAME'..." -ForegroundColor Green
+} else {
+    Write-Host "[INFO] Creating Conda environment '$ENV_NAME'..." -ForegroundColor Green
+    conda create --name $ENV_NAME python=$PYTHON_VERSION -y
+}
 
-if ! find_conda; then
-    echo "[ERROR] Conda not found."
-    exit 1
-fi
+# 3. Hardware Selection
+Write-Host "-------------------------------------------------------" -ForegroundColor Yellow
+Write-Host "Select your Hardware Accelerator:" -ForegroundColor Yellow
+Write-Host "-------------------------------------------------------" -ForegroundColor Yellow
+Write-Host "1) NVIDIA (CUDA)"
+Write-Host "2) Intel ARC (XPU)"
+Write-Host "3) CPU Only"
+$choice = Read-Host "Enter selection (1-3)"
 
-# Create or Update Env
-if conda env list | grep -E "^${ENV_NAME} " &>/dev/null; then
-    echo "[INFO] Updating existing environment '${ENV_NAME}'..."
-else
-    echo "[INFO] Creating Conda environment..."
-    conda create --name "${ENV_NAME}" python=${PYTHON_VERSION} -y
-fi
+# 4. Activate & Install
+# Note: Activating conda in a script child process is tricky. 
+# We will use 'conda run' for commands to ensure they run in the env context.
 
-conda activate "${ENV_NAME}"
-python -m pip install --upgrade pip --quiet
+Write-Host "[INFO] Upgrading pip..." -ForegroundColor Green
+conda run -n $ENV_NAME python -m pip install --upgrade pip --quiet
 
-echo ""
-echo "-------------------------------------------------------"
-echo "Select your Hardware Accelerator:"
-echo "-------------------------------------------------------"
-echo "1) Intel ARC (XPU) - Uses PyTorch Nightly (Linux)"
-echo "2) NVIDIA (CUDA)   - Uses Stable PyTorch"
-echo "3) AMD (ROCm)      - Uses Stable PyTorch"
-echo "4) CPU Only        - Slow"
-read -p "Enter selection (1-4): " hw_choice
+Write-Host "[INFO] Cleaning previous PyTorch installations..." -ForegroundColor Green
+conda run -n $ENV_NAME pip uninstall -y torch torchvision torchaudio 2>$null
 
-echo "[INFO] Cleaning previous PyTorch installations..."
-pip uninstall -y torch torchvision torchaudio 2>/dev/null || true
-
-echo "[INFO] Installing PyTorch..."
-case $hw_choice in
-    1)
-        # Using the official nightly XPU index URL
-        pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/xpu
+Write-Host "[INFO] Installing PyTorch..." -ForegroundColor Green
+switch ($choice) {
+    "1" {
+        Write-Host "Installing for NVIDIA CUDA..." -ForegroundColor Cyan
+        conda run -n $ENV_NAME pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+    }
+    "2" {
+        Write-Host "Installing for Intel ARC (XPU)..." -ForegroundColor Cyan
+        conda run -n $ENV_NAME pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
         
-        # Set persistent Conda variables for Intel Arc
-        conda env config vars set ONEAPI_DEVICE_SELECTOR=level_zero:0 TORCH_LLM_ALLREDUCE=1
-        
-        # Reactivate to apply vars
-        conda deactivate
-        conda activate "${ENV_NAME}"
-        ;;
-    2)
-        pip install torch torchvision torchaudio
-        ;;
-    3)
-        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.0
-        ;;
-    *)
-        pip install torch torchvision torchaudio
-        ;;
-esac
+        Write-Host "[INFO] Setting Environment Variables for Intel Arc..."
+        conda env config vars set ONEAPI_DEVICE_SELECTOR=level_zero:0 -n $ENV_NAME
+    }
+    "3" {
+        Write-Host "Installing for CPU..." -ForegroundColor Cyan
+        conda run -n $ENV_NAME pip install torch torchvision torchaudio
+    }
+    Default {
+        Write-Host "Invalid selection. Defaulting to CPU." -ForegroundColor Red
+        conda run -n $ENV_NAME pip install torch torchvision torchaudio
+    }
+}
 
-echo "[INFO] Installing Dependencies..."
-pip install diffusers transformers accelerate safetensors fastapi uvicorn[standard] jinja2 toml pyngrok pillow numpy sdnq
+Write-Host "[INFO] Installing Application Dependencies..." -ForegroundColor Green
+conda run -n $ENV_NAME pip install -r requirements.txt
 
-echo "======================================================="
-echo "[SUCCESS] Installation complete!"
-echo "Run ./start.sh to launch."
-echo "======================================================="
+Write-Host ""
+Write-Host "=======================================================" -ForegroundColor Cyan
+Write-Host "[SUCCESS] Installation complete!" -ForegroundColor Green
+Write-Host "Run start.bat or start.ps1 to launch." -ForegroundColor Gray
+Write-Host "=======================================================" -ForegroundColor Cyan
+Read-Host "Press Enter to exit..."

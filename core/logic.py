@@ -127,7 +127,7 @@ def delete_model_file(filename):
         os.remove(file_path)
         logger.info(f"Deleted model file: {filename}")
         return {"status": "success", "message": f"Deleted {filename}"}
-    return {"status": "error", "message": "File not found"}
+    return {"status": "not_found", "message": "File not found"}
 
 
 def delete_lora_file(filename):
@@ -141,7 +141,7 @@ def delete_lora_file(filename):
         os.remove(file_path)
         logger.info(f"Deleted LoRA file: {filename}")
         return {"status": "success", "message": f"Deleted {filename}"}
-    return {"status": "error", "message": "File not found"}
+    return {"status": "not_found", "message": "File not found"}
 
 
 def _get_next_image_number():
@@ -170,7 +170,7 @@ def delete_image(filename):
         os.remove(file_path)
         logger.info(f"Deleted output image: {filename}")
         return {"status": "success", "message": f"Deleted {filename}"}
-    return {"status": "error", "message": "File not found"}
+    return {"status": "not_found", "message": "File not found"}
 
 
 def unload_model():
@@ -235,7 +235,7 @@ def _calculate_max_resolution(model_type):
         total_mp = base_res_mp + max_add_mp
         side = math.sqrt(total_mp * 1024 * 1024)
         return max(512, min(4096, int(side // 64 * 64)))
-    except:
+    except Exception:
         return 1024
 
 
@@ -431,16 +431,16 @@ def get_prompts():
     return prompt_book.get_all_prompts()
 
 
-def add_prompt(t, p, np=""):
-    return {"success": prompt_book.add_prompt(t, p, np)}
+def add_prompt(title, prompt, negative_prompt=""):
+    return {"success": prompt_book.add_prompt(title, prompt, negative_prompt)}
 
 
-def update_prompt(ot, nt, p, np):
-    return {"success": prompt_book.update_prompt(ot, nt, p, np)}
+def update_prompt(old_title, new_title, prompt, negative_prompt):
+    return {"success": prompt_book.update_prompt(old_title, new_title, prompt, negative_prompt)}
 
 
-def delete_prompt(t):
-    return {"success": prompt_book.delete_prompt(t)}
+def delete_prompt(title):
+    return {"success": prompt_book.delete_prompt(title)}
 
 
 def get_image_metadata(filename):

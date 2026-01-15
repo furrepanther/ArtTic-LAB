@@ -109,6 +109,6 @@ case $HW_CHOICE in
 esac
 
 log_info "Installing core dependencies..."
-pip install diffusers transformers accelerate safetensors fastapi "uvicorn[standard]" jinja2 toml pyngrok pillow numpy sdnq psutil
+pip install -r requirements.txt
 
 log_info "Setup complete! Run ./start.sh to launch."
