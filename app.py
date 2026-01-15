@@ -3,8 +3,15 @@ import logging
 import sys
 import os
 import signal
-import torch
 import warnings
+
+# --- Warning Suppression ---
+# General cleanup
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+# Specific suppression for the CLIP/Transformer mismatch warning
+warnings.filterwarnings("ignore", message=".*clip_text_model.*")
+
 from helpers.cli_manager import (
     setup_logging,
     log_system_info,
@@ -12,78 +19,75 @@ from helpers.cli_manager import (
     setup_web_logging,
 )
 
-# Suppress specific warnings for a cleaner console output
-warnings.filterwarnings("ignore", ".*safety_checker.*")
-warnings.filterwarnings("ignore", ".*You have disabled the safety checker.*")
-warnings.filterwarnings("ignore", category=UserWarning)
-warnings.filterwarnings("ignore", category=FutureWarning)
-
-# Argument Parsing
-parser = argparse.ArgumentParser(
-    description="ArtTic-LAB: A clean UI for Multi-GPU AI Art."
-)
+parser = argparse.ArgumentParser(description="ArtTic-LAB: Universal AI Art Station")
 parser.add_argument(
-    "--disable-filters", action="store_true", help="Disable custom log filters."
+    "--disable-filters", action="store_true", help="Disable custom log formatting"
 )
+parser.add_argument("--host", type=str, default="127.0.0.1", help="Host address")
+parser.add_argument("--port", type=int, default=7860, help="Port number")
 parser.add_argument(
-    "--host", type=str, default="127.0.0.1", help="Host address to bind the server to."
-)
-parser.add_argument("--port", type=int, default=7860, help="Port to run the server on.")
-parser.add_argument(
-    "--share", action="store_true", help="Create a public link using ngrok."
+    "--share", action="store_true", help="Launch with public share link enabled"
 )
 args = parser.parse_args()
 
-# Setup Logging
 setup_logging(disable_filters=args.disable_filters)
 logger = logging.getLogger(APP_LOGGER_NAME)
 
 
 def signal_handler(sig, frame):
-    """Handle Ctrl+C to exit gracefully."""
     print("\n")
-    logger.info("Ctrl+C detected. Shutting down ArtTic-LAB gracefully...")
+    logger.info("Shutdown signal received. Exiting...")
     sys.exit(0)
 
 
 def launch_web_ui():
-    """Import and launch the FastAPI server using Uvicorn."""
     try:
         import uvicorn
+        import transformers
+        import diffusers
+
+        # Set library verbosity to error to reduce log spam (like "Loaded model..."),
+        # but this DOES NOT disable progress bars (tqdm).
+        transformers.utils.logging.set_verbosity_error()
+        diffusers.utils.logging.set_verbosity_error()
+
         from web.server import app as fastapi_app
-    except ImportError:
-        logger.error("Required packages for the custom UI are not installed.")
-        logger.error("Please run the installer (install.bat or install.sh) again.")
+        from core.logic import toggle_share
+    except ImportError as e:
+        logger.error(f"Dependencies missing: {e}")
+        logger.error("Please run ./install.sh")
         sys.exit(1)
 
+    # Handle Ngrok Sharing
     if args.share:
-        try:
-            from pyngrok import ngrok
+        logger.info("Enabling public share link...")
+        res = toggle_share()
+        if res["status"] == "connected":
+            logger.info(f"Public URL: {res['url']}")
+        else:
+            logger.error(f"Share failed: {res.get('message')}")
 
-            public_url = ngrok.connect(args.port)
-            logger.info(f"Public ArtTic-LAB URL: {public_url}")
-            logger.info("This link is now accessible from anywhere.")
-        except ImportError:
-            logger.error("Could not create public link. `pyngrok` is not installed.")
-        except Exception as e:
-            logger.error(f"Ngrok error: {e}")
-            logger.error(
-                "Could not create public link. Ensure your ngrok authtoken is configured if required."
-            )
-
-    logger.info("Launching custom web UI...")
-
+    # Display System Info
     if not args.disable_filters:
         setup_web_logging()
-        log_level = "warning"
+        if os.name == "nt":
+            os.system("cls")
+        else:
+            os.system("clear")
+        log_system_info()
     else:
-        log_level = "info"
+        log_system_info()
 
-    logger.info(f"Access ArtTic-LAB locally at http://{args.host}:{args.port}")
-    logger.info("Press Ctrl+C in this terminal to shutdown.")
+    logger.info(f"Local URL: http://{args.host}:{args.port}")
+    logger.info("Press Ctrl+C to stop.")
 
+    # Configure Uvicorn
     config = uvicorn.Config(
-        fastapi_app, host=args.host, port=args.port, log_level=log_level
+        fastapi_app,
+        host=args.host,
+        port=args.port,
+        log_level="critical",  # Suppress Uvicorn startup logs
+        access_log=False,
     )
     server = uvicorn.Server(config)
     server.run()
@@ -92,14 +96,8 @@ def launch_web_ui():
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
 
-    # Clear terminal for a clean start
-    if not args.disable_filters:
-        os.system("cls" if os.name == "nt" else "clear")
-
-    # Ensure required directories exist
     os.makedirs("./outputs", exist_ok=True)
     os.makedirs("./models", exist_ok=True)
     os.makedirs("./loras", exist_ok=True)
 
-    log_system_info()
     launch_web_ui()
