@@ -8,7 +8,7 @@ import platform
 import subprocess
 
 APP_LOGGER_NAME = "arttic_lab"
-APP_VERSION = "4.1.0"
+APP_VERSION = "4.0.0"
 
 
 class ArtTicFilter(logging.Filter):
