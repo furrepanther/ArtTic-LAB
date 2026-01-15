@@ -1,0 +1,71 @@
+name: 🚀 Release Generator
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag to release (e.g., v4.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: 📦 Build & Draft Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag_name }} # Checkout the specific tag entered by user
+          fetch-depth: 0 # Fetch all history to find previous tags
+
+      - name: 📜 Generate Changelog
+        id: changelog
+        run: |
+          CURRENT_TAG="${{ inputs.tag_name }}"
+          
+          # Find the tag immediately preceding the current one
+          PREV_TAG=$(git describe --tags --abbrev=0 ${CURRENT_TAG}^ 2>/dev/null || echo "")
+          
+          echo "Target Tag: $CURRENT_TAG"
+          echo "Previous Tag: $PREV_TAG"
+
+          echo "## 📝 What's Changed" > changelog.md
+          
+          if [ -z "$PREV_TAG" ]; then
+            echo "### Initial Release 🚀" >> changelog.md
+            git log $CURRENT_TAG --pretty=format:"- %s (%h)" >> changelog.md
+          else
+            git log --pretty=format:"- %s (%h)" $PREV_TAG..$CURRENT_TAG >> changelog.md
+            echo "" >> changelog.md
+            echo "---" >> changelog.md
+            echo "✨ *Full Changelog*: https://github.com/${{ github.repository }}/compare/$PREV_TAG...$CURRENT_TAG" >> changelog.md
+          fi
+
+          # Read file content into output variable using delimiter
+          {
+            echo 'body<<EOF'
+            cat changelog.md
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 📦 Archive Source Code
+        run: |
+          # Zip files, excluding git folder, tests, and heavy demo assets
+          zip -r "ArtTic-LAB-${{ inputs.tag_name }}-Source.zip" . -x "*.git*" "*.github*" "tests/*" "assets/demos/*" "__pycache__/*"
+
+      - name: 🚀 Create Draft Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag_name }}
+          name: "🎉 ArtTic-LAB ${{ inputs.tag_name }}"
+          body: ${{ steps.changelog.outputs.body }}
+          draft: true
+          prerelease: false
+          files: |
+            ArtTic-LAB-${{ inputs.tag_name }}-Source.zip
+          token: ${{ secrets.GITHUB_TOKEN }}
