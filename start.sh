@@ -1,8 +1,11 @@
 #!/bin/bash
 ENV_NAME="ArtTic-LAB"
+MINT="\033[38;2;82;183;136m"
+WHITE="\033[0m"
+RED="\033[38;2;239;68;68m"
 
-# Silence SYCL warnings during compilation
-export SYCL_DISABLE_FSYCL_SYCLHPP_WARNING=1
+log_info() { echo -e "${MINT}[LAUNCHER] >${WHITE} $1"; }
+log_err() { echo -e "${RED}[ERROR] >${WHITE} $1"; }
 
 find_conda() {
     if command -v conda &> /dev/null; then
@@ -19,43 +22,29 @@ find_conda() {
     return 1
 }
 
-echo "[INFO] Preparing to launch ArtTic-LAB..."
-
 if ! find_conda; then
-    echo "[ERROR] Conda not found."
+    log_err "Conda not found."
     exit 1
 fi
 
 source "${CONDA_BASE_PATH}/etc/profile.d/conda.sh"
-conda activate "${ENV_NAME}"
+conda activate "${ENV_NAME}" || { log_err "Failed to activate environment. Run ./install.sh first."; exit 1; }
 
-if [ $? -ne 0 ]; then
-    echo "[ERROR] Failed to activate '${ENV_NAME}'."
-    echo "Run './install.sh' first."
-    exit 1
-fi
-
-echo "[SUCCESS] Environment activated."
-echo
-echo "======================================================="
-echo "             Launching ArtTic-LAB"
-echo "======================================================="
-echo
+export SYCL_DISABLE_FSYCL_SYCLHPP_WARNING=1
+export PYTHONWARNINGS="ignore"
 
 while true; do
     python app.py "$@"
     EXIT_CODE=$?
-    
     if [ $EXIT_CODE -eq 21 ]; then
-        echo "[INFO] Restarting Backend..."
+        log_info "Restarting Backend..."
         sleep 1
         continue
     elif [ $EXIT_CODE -ne 0 ]; then
-        echo "[ERROR] App crashed with exit code $EXIT_CODE"
+        log_err "App crashed with code $EXIT_CODE"
         read -p "Press Enter to exit..."
         exit $EXIT_CODE
     else
         break
     fi
 done
-exit 0
