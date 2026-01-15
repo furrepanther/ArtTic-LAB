@@ -1,35 +1,23 @@
 @echo off
-setlocal
-title ArtTic-LAB
+set ENV_NAME=ArtTic-LAB
+set SYCL_DISABLE_FSYCL_SYCLHPP_WARNING=1
 
-set "ENV_NAME=ArtTic-LAB"
-
-:: Check Conda
-where conda >nul 2>nul
-if %ERRORLEVEL% NEQ 0 (
-    echo [ERROR] Conda not found.
-    pause
-    exit /b 1
-)
-
-:: Activate
 call conda activate %ENV_NAME%
-if %ERRORLEVEL% NEQ 0 (
-    echo [ERROR] Environment not found. Run install.bat.
+if errorlevel 1 (
+    echo [ERROR] Failed to activate environment. Run install.bat first.
     pause
     exit /b 1
 )
-
-echo =======================================================
-echo             Launching ArtTic-LAB
-echo =======================================================
-echo.
 
 :loop
 python app.py %*
 if %ERRORLEVEL% EQU 21 (
-    echo [INFO] Restarting...
-    timeout /t 1 /nobreak >nul
+    echo [INFO] Restarting Backend...
+    timeout /t 1 >nul
     goto loop
 )
-if %ERRORLEVEL% NEQ 0 pause
+if %ERRORLEVEL% NEQ 0 (
+    echo [ERROR] App crashed.
+    pause
+    exit /b %ERRORLEVEL%
+)
