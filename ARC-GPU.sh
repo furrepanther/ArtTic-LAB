@@ -59,31 +59,9 @@ echo -e "Active Environment: ${GREEN}$CONDA_DEFAULT_ENV${NC}"
 
 echo -e "\n${YELLOW}[2/3] Validating Native XPU Environment...${NC}"
 
-python -c "
-import torch
-import sys
-try:
-    # Check 1: Does the module exist?
-    if not hasattr(torch, 'xpu'):
-        print('${RED}FAIL: PyTorch installed, but 'torch.xpu' is missing.${NC}')
-        sys.exit(1)
-    
-    # Check 2: Is the hardware visible?
-    if not torch.xpu.is_available():
-        print('${YELLOW}FAIL: torch.xpu exists, but device is not available (Driver/Kernel issue).${NC}')
-        sys.exit(1)
-        
-    print(f'${GREEN}Native XPU Detected: {torch.xpu.get_device_name(0)}${NC}')
-    sys.exit(0) # Success
 
-except Exception as e:
-    print(f'${RED}Validation Error: {e}${NC}')
-    sys.exit(1)
-"
-
-PYTHON_EXIT_CODE=$?
-
-if [ $PYTHON_EXIT_CODE -ne 0 ]; then
+# [2/3] Validating Native XPU Environment
+if ! python scripts/validate_xpu.py; then
     echo -e "${YELLOW}Initiating Native XPU Reinstall...${NC}"
     
     pip uninstall -y torch torchvision torchaudio
@@ -92,16 +70,4 @@ if [ $PYTHON_EXIT_CODE -ne 0 ]; then
 fi
 
 echo -e "\n${YELLOW}[3/3] Final Hardware Check...${NC}"
-python -c "
-import torch
-try:
-    if torch.xpu.is_available():
-        props = torch.xpu.get_device_properties(0)
-        print(f'${GREEN}SUCCESS: {props.name}${NC}')
-        print(f'${GREEN}VRAM: {props.total_memory / 1024**3:.2f} GB${NC}')
-        print(f'${GREEN}Driver: Native PyTorch XPU${NC}')
-    else:
-        print('${RED}FAILURE: XPU still not accessible after repair.${NC}')
-except Exception as e:
-    print(f'${RED}Error during final check: {e}${NC}')
-"
+python scripts/validate_xpu.py --check-hardware
