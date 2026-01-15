@@ -18,7 +18,7 @@ class TestLogic(unittest.TestCase):
         self.assertEqual(res, 1024)
 
     @patch("os.path.exists", return_value=False)
-    def test_delete_prompt_not_found(self, mock_exists):
+    def test_delete_model_file_not_found(self, mock_exists):
         # Test the not_found status logic
         result = logic.delete_model_file("missing.safetensors")
         self.assertEqual(result["status"], "not_found")
@@ -26,7 +26,7 @@ class TestLogic(unittest.TestCase):
     @patch("os.path.exists", return_value=True)
     @patch("os.remove")
     @patch("core.logic.os.path.commonpath")
-    def test_delete_prompt_success(self, mock_common, mock_remove, mock_exists):
+    def test_delete_model_file_success(self, mock_common, mock_remove, mock_exists):
         # Mock commonpath to allow deletion validation
         mock_common.return_value = os.path.abspath("./models")
         

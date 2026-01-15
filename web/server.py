@@ -70,10 +70,9 @@ async def update_prompt(request: Request):
     )
 
 
-@app.delete("/api/prompts")
-async def delete_prompt(request: Request):
-    body = await request.json()
-    return core.delete_prompt(body.get("title"))
+@app.delete("/api/prompts/{title}")
+async def delete_prompt(title: str):
+    return core.delete_prompt(title)
 
 
 class ConnectionManager:

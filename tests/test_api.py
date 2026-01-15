@@ -42,9 +42,8 @@ class TestAPI(unittest.TestCase):
     @patch("web.server.core.delete_prompt")
     def test_delete_prompt(self, mock_delete):
         mock_delete.return_value = {"success": True}
-        # DELETE with body is non-standard but supported by some clients/FastAPI
-        # Using client.request to be explicit
-        response = self.client.request("DELETE", "/api/prompts", json={"title": "To Delete"})
+        # DELETE with path parameter
+        response = self.client.delete("/api/prompts/To%20Delete")
         self.assertEqual(response.status_code, 200)
         mock_delete.assert_called_with("To Delete")
 
