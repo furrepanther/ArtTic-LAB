@@ -1,0 +1,8 @@
+{
+  "codeql_source_repo": "https://github.com/github/codeql",
+  "codeql_source_ref": "480ae619e6e499dfe9da2bbdc512a30d3f481b00",
+  "generated_at_utc": "2026-03-05T12:09:08Z",
+  "scenario_pack_version": "codeql-sidecar-v1",
+  "mode": "pattern_fallback",
+  "status": "success"
+}

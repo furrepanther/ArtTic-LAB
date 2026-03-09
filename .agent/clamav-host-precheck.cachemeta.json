@@ -1,0 +1,10 @@
+{
+  "tool": "clamav_host_precheck",
+  "repo_path": "/mnt/f/.repo-quarantine/ArtTic-LAB__20260228T200055Z",
+  "repo_head": "9f1bd6e7b9813ee250dd35964c723d83b3548d48",
+  "gate_phase": "3",
+  "clamav_required": "1",
+  "clamav_script_sha": "21adda48e2c13176fe7c5d0f703667c37ee9622799bf4443f98a07e2c8fab26d",
+  "report_path": "/mnt/f/.repo-quarantine/ArtTic-LAB__20260228T200055Z/.agent/clamav-host-precheck.json",
+  "generated_at_epoch": 1772308896
+}
